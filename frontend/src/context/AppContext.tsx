@@ -10,11 +10,21 @@ interface Note {
   updatedAt: Date;
 }
 
+interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  tags: string[];
+  noteId?: string;
+  createdAt: Date;
+}
+
 interface AppState {
   notes: Note[];
   currentNote: Note | null;
   searchQuery: string;
   selectedTags: string[];
+  flashcards: Flashcard[];
 }
 
 type AppAction =
@@ -23,13 +33,18 @@ type AppAction =
   | { type: 'DELETE_NOTE'; payload: string }
   | { type: 'SET_CURRENT_NOTE'; payload: Note | null }
   | { type: 'SET_SEARCH_QUERY'; payload: string }
-  | { type: 'SET_SELECTED_TAGS'; payload: string[] };
+  | { type: 'SET_SELECTED_TAGS'; payload: string[] }
+  | { type: 'ADD_FLASHCARD'; payload: Flashcard }
+  | { type: 'ADD_FLASHCARDS'; payload: Flashcard[] }
+  | { type: 'UPDATE_FLASHCARD'; payload: Flashcard }
+  | { type: 'DELETE_FLASHCARD'; payload: string };
 
 const initialState: AppState = {
   notes: [],
   currentNote: null,
   searchQuery: '',
   selectedTags: [],
+  flashcards: [],
 };
 
 const AppContext = createContext<{
@@ -71,6 +86,28 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       return {
         ...state,
         selectedTags: action.payload,
+      };
+    case 'ADD_FLASHCARD':
+      return {
+        ...state,
+        flashcards: [...state.flashcards, action.payload],
+      };
+    case 'ADD_FLASHCARDS':
+      return {
+        ...state,
+        flashcards: [...state.flashcards, ...action.payload],
+      };
+    case 'UPDATE_FLASHCARD':
+      return {
+        ...state,
+        flashcards: state.flashcards.map((flashcard) =>
+          flashcard.id === action.payload.id ? action.payload : flashcard
+        ),
+      };
+    case 'DELETE_FLASHCARD':
+      return {
+        ...state,
+        flashcards: state.flashcards.filter((flashcard) => flashcard.id !== action.payload),
       };
     default:
       return state;

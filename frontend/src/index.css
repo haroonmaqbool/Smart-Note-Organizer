@@ -1,29 +1,37 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@300;400;500;600;700&display=swap');
 
 :root {
-  --primary-color: #6200EA;
-  --primary-light: #B388FF;
-  --primary-dark: #4A148C;
-  --secondary-color: #00BFA5;
-  --secondary-light: #64FFDA;
-  --secondary-dark: #008E76;
-  --background-light: #F5F7FA;
-  --text-primary: #2D3748;
-  --text-secondary: #718096;
+  --primary-color: #1976d2;
+  --primary-light: #63a4ff;
+  --primary-dark: #004ba0;
+  --secondary-color: #2e7d32;
+  --secondary-light: #60ad5e;
+  --secondary-dark: #005005;
+  --background-light: #f5f7fa;
+  --background-paper: #ffffff;
+  --text-primary: #263238;
+  --text-secondary: #546e7a;
+  --transition-duration: 0.3s;
+  --box-shadow-light: 0 2px 10px rgba(0, 0, 0, 0.05);
+  --box-shadow-medium: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --border-radius: 8px;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Inter', 'Poppins', 'Roboto', sans-serif;
+  font-family: 'Inter', 'Roboto', 'Helvetica', 'Arial', sans-serif;
   background-color: var(--background-light);
   color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -39,17 +47,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
+  background: #f8fafc;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(98, 0, 234, 0.2);
-  border-radius: 10px;
+  background: #cbd5e1;
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(98, 0, 234, 0.4);
+  background: #94a3b8;
 }
 
 /* Animations */
@@ -63,6 +71,23 @@ body {
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes slideInRight {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(25, 118, 210, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(25, 118, 210, 0); }
+}
+
+@keyframes breathe {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+  100% { transform: scale(1); }
+}
+
 .fade-in {
   animation: fadeIn 0.5s ease-in-out;
 }
@@ -71,36 +96,104 @@ body {
   animation: slideUp 0.5s ease-out;
 }
 
-/* Transitions */
+.slide-in-right {
+  animation: slideInRight 0.5s ease-out;
+}
+
+/* Professional transitions */
 .smooth-transition {
-  transition: all 0.3s ease;
+  transition: all var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-transition {
+  transition: 
+    transform var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Focus styles */
+:focus {
+  outline: none;
+}
+
 *:focus-visible {
   outline: 2px solid var(--primary-color);
   outline-offset: 2px;
 }
 
-/* Improved button hover effects */
+/* Button hover effects */
 button:not([disabled]):hover {
   transform: translateY(-2px);
-  transition: all 0.2s;
+  transition: transform 0.2s ease;
 }
 
-/* Card hover effect */
-.card-hover {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+/* Card effects */
+.MuiCard-root {
+  box-shadow: var(--box-shadow-light);
+  transition: all 0.3s ease;
 }
 
-.card-hover:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+.MuiCard-root:hover {
+  box-shadow: var(--box-shadow-medium) !important;
+}
+
+/* Paper effects */
+.MuiPaper-root {
+  transition: all 0.3s ease;
+}
+
+/* Buttons */
+.MuiButton-contained {
+  box-shadow: var(--box-shadow-light) !important;
+}
+
+.MuiButton-contained:hover {
+  box-shadow: var(--box-shadow-medium) !important;
+}
+
+/* Text fields */
+.MuiOutlinedInput-root:hover .MuiOutlinedInput-notchedOutline {
+  border-color: var(--primary-color);
+}
+
+/* Active element effects */
+.MuiListItem-root.Mui-selected {
+  position: relative;
+  overflow: hidden;
+}
+
+.MuiListItem-root.Mui-selected::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  background-color: var(--primary-color);
+}
+
+/* Selection color */
+::selection {
+  background-color: var(--primary-light);
+  color: white;
+}
+
+/* Avatar effects */
+.MuiAvatar-root {
+  transition: all 0.3s ease;
+}
+
+.MuiAvatar-root:hover {
+  transform: scale(1.05);
 }
 
 /* Mobile responsiveness */
 @media (max-width: 600px) {
   h4 {
     font-size: 1.4rem !important;
+  }
+  
+  .MuiContainer-root {
+    padding: 16px !important;
   }
 } 

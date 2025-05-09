@@ -1,0 +1,76 @@
+/* Rich Text Editor Styles */
+
+.active-format {
+  background-color: rgba(25, 118, 210, 0.08);
+}
+
+/* Editor content styles */
+[contenteditable=true]:focus {
+  outline: none;
+}
+
+[contenteditable=true] blockquote {
+  margin: 0.5em 0;
+  padding: 0.5em 1em;
+  border-left: 4px solid rgba(25, 118, 210, 0.5);
+  background-color: rgba(25, 118, 210, 0.05);
+}
+
+[contenteditable=true] ul {
+  padding-left: 1.5em;
+}
+
+/* Focus state for buttons */
+.active-format:hover {
+  background-color: rgba(25, 118, 210, 0.15);
+}
+
+/* Responsive styles */
+@media (max-width: 600px) {
+  .editor-toolbar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .editor-toolbar button {
+    padding: 4px;
+  }
+}
+
+/* Touch support for mobile */
+@media (pointer: coarse) {
+  .editor-toolbar button {
+    min-width: 36px;
+    min-height: 36px;
+  }
+}
+
+/* Blockquote styling */
+[contenteditable=true] blockquote {
+  quotes: "❝" "❞";
+}
+
+[contenteditable=true] blockquote::before {
+  content: open-quote;
+  font-size: 1.5em;
+  color: rgba(25, 118, 210, 0.5);
+  margin-right: 0.2em;
+}
+
+/* List styling */
+[contenteditable=true] ul li {
+  margin-bottom: 0.5em;
+}
+
+/* Prevent text style issues in editor */
+[contenteditable=true] * {
+  line-height: 1.5;
+  max-width: 100%;
+}
+
+/* Placeholder styling */
+[contenteditable=true]:empty:before {
+  position: absolute;
+  color: #aaa;
+  pointer-events: none;
+} 
