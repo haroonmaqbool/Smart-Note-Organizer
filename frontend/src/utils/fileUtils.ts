@@ -2,14 +2,22 @@ import { createWorker } from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set up PDF.js worker
-const pdfjsWorker = await import('pdfjs-dist/build/pdf.worker.entry');
-if (typeof window !== 'undefined' && 'pdfjsLib' in window) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
-}
+// Using a more type-safe approach for importing PDF.js worker
+const pdfjsWorkerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js', import.meta.url).toString();
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorkerSrc;
 
 interface TextItem {
   str: string;
   [key: string]: any;
+}
+
+// Extend the Tesseract Worker type since TypeScript doesn't know about all methods
+interface TesseractWorker {
+  load(): Promise<any>;
+  loadLanguage(lang: string): Promise<any>;
+  initialize(lang: string): Promise<any>;
+  recognize(image: File | string): Promise<any>;
+  terminate(): Promise<any>;
 }
 
 export const fileUtils = {
@@ -35,7 +43,8 @@ export const fileUtils = {
 
   async performOCR(file: File): Promise<string> {
     try {
-      const worker = await createWorker('eng');
+      // Use our extended type
+      const worker = await createWorker('eng') as unknown as TesseractWorker;
       await worker.load();
       await worker.loadLanguage('eng');
       await worker.initialize('eng');
@@ -51,9 +60,9 @@ export const fileUtils = {
   },
 
   async readTextFile(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
+    return new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = (e) => {
+      reader.onload = (e: ProgressEvent<FileReader>) => {
         const result = e.target?.result;
         resolve(typeof result === 'string' ? result : '');
       };
