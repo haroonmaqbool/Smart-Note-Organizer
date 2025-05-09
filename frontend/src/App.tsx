@@ -1,73 +1,109 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline, Alert, Snackbar } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
+import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import NoteEditor from './pages/NoteEditor';
 import Search from './pages/Search';
 import Flashcards from './pages/Flashcards';
 import { AppProvider } from './context/AppContext';
+import { api } from './services/api';
 
 const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#3f51b5',
-      light: '#757de8',
-      dark: '#002984',
+      main: '#6200EA',
+      light: '#B388FF',
+      dark: '#4A148C',
     },
     secondary: {
-      main: '#f50057',
-      light: '#ff4081',
-      dark: '#c51162',
+      main: '#00BFA5',
+      light: '#64FFDA',
+      dark: '#008E76',
     },
     background: {
-      default: '#f9f9f9',
+      default: '#F5F7FA',
       paper: '#ffffff',
     },
     text: {
-      primary: '#212121',
-      secondary: '#757575',
+      primary: '#2D3748',
+      secondary: '#718096',
     },
   },
   typography: {
-    fontFamily: '"Poppins", "Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: '"Inter", "Poppins", "Roboto", sans-serif',
     h4: {
-      fontWeight: 600,
+      fontWeight: 700,
+      letterSpacing: '-0.5px',
     },
     h6: {
       fontWeight: 600,
+      letterSpacing: '-0.3px',
+    },
+    button: {
+      fontWeight: 500,
     },
   },
   shape: {
-    borderRadius: 8,
+    borderRadius: 12,
   },
   components: {
     MuiButton: {
       styleOverrides: {
         root: {
           textTransform: 'none',
-          borderRadius: 8,
-          padding: '8px 16px',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+          borderRadius: 12,
+          padding: '10px 20px',
+          fontWeight: 500,
+          boxShadow: 'none',
         },
         contained: {
-          boxShadow: '0 3px 5px rgba(0,0,0,0.15)',
+          boxShadow: '0 4px 14px 0 rgba(98, 0, 234, 0.2)',
+        },
+        containedSecondary: {
+          boxShadow: '0 4px 14px 0 rgba(0, 191, 165, 0.2)',
+        },
+        outlined: {
+          borderWidth: '1.5px',
+          '&:hover': {
+            borderWidth: '1.5px',
+          },
         },
       },
     },
     MuiCard: {
       styleOverrides: {
         root: {
-          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-          borderRadius: 12,
+          boxShadow: '0 4px 20px rgba(0,0,0,0.05)',
+          borderRadius: 16,
+          border: '1px solid rgba(0,0,0,0.05)',
         },
       },
     },
     MuiAppBar: {
       styleOverrides: {
         root: {
-          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.08)',
+          background: 'linear-gradient(90deg, #6200EA 0%, #7C4DFF 100%)',
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            borderRadius: 12,
+          },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          borderRadius: 8,
+          fontWeight: 500,
         },
       },
     },
@@ -75,6 +111,27 @@ const theme = createTheme({
 });
 
 function App() {
+  const [backendConnected, setBackendConnected] = useState(true);
+
+  useEffect(() => {
+    // Check if backend API is available
+    const checkBackendConnection = async () => {
+      try {
+        const isConnected = await api.healthCheck();
+        setBackendConnected(isConnected);
+        
+        if (!isConnected) {
+          console.error('Backend API is not available. Some features may not work.');
+        }
+      } catch (error) {
+        console.error('Error checking backend connection:', error);
+        setBackendConnected(false);
+      }
+    };
+
+    checkBackendConnection();
+  }, []);
+
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -90,6 +147,16 @@ function App() {
           </Layout>
         </Router>
       </AppProvider>
+      
+      <Snackbar 
+        open={!backendConnected} 
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{ bottom: { xs: 90, sm: 16 } }}
+      >
+        <Alert severity="warning" sx={{ width: '100%' }}>
+          Cannot connect to backend services. Some features might not work properly.
+        </Alert>
+      </Snackbar>
     </ThemeProvider>
   );
 }

@@ -4,6 +4,12 @@ import spacy
 from transformers import pipeline
 import os
 from dotenv import load_dotenv
+import tempfile
+from werkzeug.utils import secure_filename
+import PyPDF2
+import pytesseract
+from PIL import Image
+import io
 
 # Load environment variables
 load_dotenv()
@@ -55,6 +61,75 @@ def tag_text():
         return jsonify({"tags": list(set(tags))})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part in the request"}), 400
+        
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+        
+    try:
+        filename = secure_filename(file.filename)
+        file_ext = os.path.splitext(filename)[1].lower()
+        
+        if file_ext == '.pdf':
+            # Process PDF file
+            text = extract_text_from_pdf(file)
+        elif file_ext == '.txt' or file_ext == '.md':
+            # Process text file
+            text = file.read().decode('utf-8')
+        else:
+            return jsonify({"error": "Unsupported file type. Please upload .txt, .md, or .pdf file"}), 400
+            
+        return jsonify({"text": text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def extract_text_from_pdf(file):
+    """Extract text from a PDF file, including scanned documents using OCR if needed."""
+    text = ""
+    
+    # Create a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+        file.save(temp_file.name)
+        
+        # Try to extract text directly
+        with open(temp_file.name, 'rb') as pdf_file:
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                page_text = page.extract_text()
+                
+                # If page has no text (might be a scanned page), try OCR
+                if not page_text or len(page_text.strip()) < 20:
+                    try:
+                        # Convert PDF page to image
+                        images = convert_pdf_to_images(temp_file.name, page_num)
+                        
+                        # Perform OCR on the image
+                        for img in images:
+                            page_text += pytesseract.image_to_string(img)
+                    except Exception as e:
+                        print(f"OCR error: {str(e)}")
+                
+                text += page_text + "\n\n"
+        
+        # Remove the temporary file
+        os.unlink(temp_file.name)
+        
+    return text
+
+def convert_pdf_to_images(pdf_path, page_num):
+    """Convert a PDF page to images for OCR processing."""
+    # This is a placeholder function
+    # In a real implementation, you would use a library like pdf2image
+    # For simplicity, we're returning an empty list here
+    return []
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 

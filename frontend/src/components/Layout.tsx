@@ -13,15 +13,18 @@ import {
   List,
   ListItem,
   ListItemText,
-  Divider
+  Divider,
+  Avatar,
+  Tooltip
 } from '@mui/material';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { 
   Dashboard as DashboardIcon, 
   Edit as EditIcon, 
   Search as SearchIcon, 
   School as SchoolIcon,
-  Menu as MenuIcon
+  Menu as MenuIcon,
+  Lightbulb as LightbulbIcon
 } from '@mui/icons-material';
 
 interface LayoutProps {
@@ -32,6 +35,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = React.useState(false);
+  const location = useLocation();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -44,11 +48,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Flashcards', path: '/flashcards', icon: <SchoolIcon /> },
   ];
 
+  const isActive = (path: string) => location.pathname === path;
+
   const drawer = (
     <Box onClick={handleDrawerToggle} sx={{ textAlign: 'center' }}>
-      <Typography variant="h6" sx={{ my: 2 }}>
-        Smart Note Organizer
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', my: 2, gap: 1 }}>
+        <LightbulbIcon sx={{ color: 'primary.main' }} />
+        <Typography variant="h6" sx={{ fontWeight: 700 }}>
+          Smart Notes
+        </Typography>
+      </Box>
       <Divider />
       <List>
         {navItems.map((item) => (
@@ -58,14 +67,23 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             to={item.path} 
             key={item.text}
             sx={{ 
-              color: 'text.primary',
+              color: isActive(item.path) ? 'primary.main' : 'text.primary',
+              backgroundColor: isActive(item.path) ? 'rgba(98, 0, 234, 0.08)' : 'transparent',
+              borderRadius: '8px',
+              mx: 1,
+              mb: 1,
               '&:hover': {
-                backgroundColor: 'rgba(63, 81, 181, 0.08)',
+                backgroundColor: isActive(item.path) ? 'rgba(98, 0, 234, 0.12)' : 'rgba(98, 0, 234, 0.04)',
               }
             }}
           >
-            <Box sx={{ mr: 2 }}>{item.icon}</Box>
-            <ListItemText primary={item.text} />
+            <Box sx={{ mr: 2, color: isActive(item.path) ? 'primary.main' : 'text.secondary' }}>{item.icon}</Box>
+            <ListItemText 
+              primary={item.text} 
+              primaryTypographyProps={{ 
+                fontWeight: isActive(item.path) ? 600 : 400
+              }}
+            />
           </ListItem>
         ))}
       </List>
@@ -76,9 +94,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar 
         position="sticky" 
-        sx={{ 
-          background: 'linear-gradient(45deg, #3f51b5 30%, #757de8 90%)',
-        }}
+        elevation={0}
       >
         <Toolbar>
           {isMobile && (
@@ -92,19 +108,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <MenuIcon />
             </IconButton>
           )}
-          <Typography 
-            variant="h6" 
-            component="div" 
-            sx={{ 
-              flexGrow: 1,
-              fontWeight: 700,
-              letterSpacing: '0.5px'
-            }}
-          >
-            Smart Note Organizer
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LightbulbIcon />
+            <Typography 
+              variant="h6" 
+              component="div" 
+              sx={{ 
+                fontWeight: 700,
+                letterSpacing: '0.5px'
+              }}
+            >
+              Smart Notes
+            </Typography>
+          </Box>
+          
           {!isMobile && (
-            <Box sx={{ display: 'flex', gap: 1 }}>
+            <Box sx={{ display: 'flex', gap: 1, ml: 4, flexGrow: 1 }}>
               {navItems.map((item) => (
                 <Button
                   key={item.text}
@@ -114,9 +133,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                   startIcon={item.icon}
                   sx={{ 
                     px: 2,
-                    borderRadius: '20px',
+                    py: 1,
+                    borderRadius: '12px',
+                    backgroundColor: isActive(item.path) ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
                     '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                      backgroundColor: isActive(item.path) ? 'rgba(255, 255, 255, 0.25)' : 'rgba(255, 255, 255, 0.1)',
                     }
                   }}
                 >
@@ -125,6 +146,21 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               ))}
             </Box>
           )}
+          
+          <Tooltip title="User Profile">
+            <Avatar 
+              sx={{ 
+                bgcolor: 'secondary.main',
+                cursor: 'pointer',
+                transition: 'transform 0.2s',
+                '&:hover': {
+                  transform: 'scale(1.05)',
+                }
+              }}
+            >
+              U
+            </Avatar>
+          </Tooltip>
         </Toolbar>
       </AppBar>
 
@@ -138,7 +174,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           }}
           sx={{
             display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 240 },
+            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 280 },
           }}
         >
           {drawer}
@@ -147,10 +183,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       <Container 
         component="main" 
+        maxWidth="lg"
         sx={{ 
           flexGrow: 1, 
           py: 4,
-          px: { xs: 2, sm: 3, md: 4 }
+          px: { xs: 2, sm: 3, md: 4 },
+          className: 'slide-up'
         }}
       >
         {children}
@@ -164,7 +202,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           mt: 'auto', 
           backgroundColor: theme.palette.background.paper,
           borderTop: '1px solid',
-          borderColor: 'divider',
+          borderColor: 'rgba(0,0,0,0.05)',
           textAlign: 'center'
         }}
       >
