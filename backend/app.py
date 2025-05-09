@@ -11,6 +11,11 @@ import pytesseract
 from PIL import Image
 import io
 
+# Set Tesseract path for Windows - modify this path to match your installation
+tesseract_cmd = os.environ.get('TESSERACT_CMD', r'C:\Program Files\Tesseract-OCR\tesseract.exe')
+if os.path.exists(tesseract_cmd):
+    pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
+
 # Load environment variables
 load_dotenv()
 
@@ -111,9 +116,13 @@ def extract_text_from_pdf(file):
                         # Convert PDF page to image
                         images = convert_pdf_to_images(temp_file.name, page_num)
                         
-                        # Perform OCR on the image
-                        for img in images:
-                            page_text += pytesseract.image_to_string(img)
+                        # Perform OCR on the image if Tesseract is available
+                        if hasattr(pytesseract.pytesseract, 'tesseract_cmd') and \
+                           os.path.exists(pytesseract.pytesseract.tesseract_cmd):
+                            for img in images:
+                                page_text += pytesseract.image_to_string(img)
+                        else:
+                            page_text += "[OCR unavailable: Tesseract not installed]"
                     except Exception as e:
                         print(f"OCR error: {str(e)}")
                 
@@ -129,7 +138,17 @@ def convert_pdf_to_images(pdf_path, page_num):
     # This is a placeholder function
     # In a real implementation, you would use a library like pdf2image
     # For simplicity, we're returning an empty list here
-    return []
+    try:
+        # Check if pdf2image is available (optional enhancement)
+        import importlib.util
+        if importlib.util.find_spec("pdf2image") is not None:
+            # Use pdf2image if available
+            from pdf2image import convert_from_path
+            return convert_from_path(pdf_path, first_page=page_num+1, last_page=page_num+1)
+        else:
+            return []
+    except ImportError:
+        return []
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000) 
