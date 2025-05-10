@@ -49,10 +49,6 @@ const Dashboard: React.FC = () => {
   const { notes } = state;
   const theme = useTheme();
 
-  // Add search state
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchTags, setSearchTags] = useState<string[]>([]);
-
   // State for AI flashcard generation
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
   const [selectedNote, setSelectedNote] = useState<any>(null);
@@ -70,35 +66,6 @@ const Dashboard: React.FC = () => {
   const recentlyUpdated = [...notes].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   ).slice(0, 3);
-
-  // Filter notes based on search query and tags
-  const filteredNotes = notes.filter(note => {
-    const titleMatch = note.title.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // If we have search tags, check if the note has any of the searched tags
-    const tagMatch = searchTags.length === 0 || 
-      note.tags.some(tag => searchTags.includes(tag));
-    
-    return titleMatch && tagMatch;
-  });
-
-  // Helper to collect all unique tags from notes
-  const allTags = React.useMemo(() => {
-    const tagSet = new Set<string>();
-    notes.forEach(note => {
-      note.tags.forEach(tag => tagSet.add(tag));
-    });
-    return Array.from(tagSet);
-  }, [notes]);
-
-  // Handle tag selection for filtering
-  const handleTagSelect = (tag: string) => {
-    if (searchTags.includes(tag)) {
-      setSearchTags(searchTags.filter(t => t !== tag));
-    } else {
-      setSearchTags([...searchTags, tag]);
-    }
-  };
 
   const StatCard = ({ icon, title, value, color }: { icon: React.ReactNode, title: string, value: string | number, color: string }) => (
     <Card elevation={0} sx={{ p: 2, height: '100%', borderRadius: 2, border: `1px solid ${alpha(color, 0.2)}` }}>
@@ -208,8 +175,6 @@ const Dashboard: React.FC = () => {
             onClick={() => {
               if (window.confirm('Are you sure you want to clear all notes? This cannot be undone.')) {
                 dispatch({ type: 'CLEAR_NOTES' });
-                setSearchQuery('');
-                setSearchTags([]);
                 setNotification({
                   open: true,
                   message: 'All notes have been cleared',
@@ -290,76 +255,8 @@ const Dashboard: React.FC = () => {
         </Grid>
       </Paper>
 
-      {/* Search Section */}
-      <Paper 
-        elevation={0} 
-        sx={{ 
-          p: 3, 
-          mb: 4,
-          borderRadius: 2, 
-          border: `1px solid ${theme.palette.divider}`
-        }}
-      >
-        <Box sx={{ mb: 2 }}>
-          <TextField
-            fullWidth
-            placeholder="Search notes by title..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <SearchIcon sx={{ color: 'text.secondary' }} />
-                </InputAdornment>
-              ),
-              endAdornment: searchQuery && (
-                <InputAdornment position="end">
-                  <IconButton onClick={() => setSearchQuery('')} edge="end" size="small">
-                    <ClearIcon />
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-            sx={{ 
-              '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-              }
-            }}
-          />
-        </Box>
-        
-        {/* Tags for filtering */}
-        <Box sx={{ mt: 2 }}>
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>
-            Filter by tags:
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {allTags.map(tag => (
-              <Chip 
-                key={tag}
-                label={tag}
-                size="small"
-                color={searchTags.includes(tag) ? "primary" : "default"}
-                onClick={() => handleTagSelect(tag)}
-                clickable
-              />
-            ))}
-            {searchTags.length > 0 && (
-              <Chip 
-                label="Clear Filters"
-                size="small"
-                variant="outlined"
-                onClick={() => setSearchTags([])}
-                clickable
-              />
-            )}
-          </Box>
-        </Box>
-      </Paper>
-
-      {/* Main Content Grid */}
-      <Grid container spacing={4}>
-        {/* Left Column: Notes Section */}
+      {/* Main Content Grid - Just show all notes, no search or tag filter */}
+      <Grid container spacing={3}>
         <Grid item xs={12} md={8}>
           <Paper elevation={0} sx={{ 
             p: 3, 
@@ -376,7 +273,6 @@ const Dashboard: React.FC = () => {
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
                 My Notes
               </Typography>
-              
               <Box>
                 <Button 
                   variant="contained"
@@ -398,10 +294,8 @@ const Dashboard: React.FC = () => {
                 </Button>
               </Box>
             </Box>
-            
             <Divider sx={{ mb: 3 }} />
-            
-            {filteredNotes.length === 0 ? (
+            {notes.length === 0 ? (
               <Box sx={{ 
                 display: 'flex', 
                 flexDirection: 'column', 
@@ -410,24 +304,20 @@ const Dashboard: React.FC = () => {
                 py: 6
               }}>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                  {notes.length === 0 
-                    ? "You haven't created any notes yet."
-                    : "No notes match your search criteria."}
+                  You haven't created any notes yet.
                 </Typography>
-                {notes.length === 0 && (
-                  <Button 
-                    variant="contained" 
-                    component={Link} 
-                    to="/editor"
-                    startIcon={<AddIcon />}
-                  >
-                    Create Your First Note
-                  </Button>
-                )}
+                <Button 
+                  variant="contained" 
+                  component={Link} 
+                  to="/editor"
+                  startIcon={<AddIcon />}
+                >
+                  Create Your First Note
+                </Button>
               </Box>
             ) : (
               <Grid container spacing={3}>
-                {filteredNotes.map((note) => (
+                {notes.map((note) => (
                   <Grid item xs={12} key={note.id}>
                     <Card sx={{ 
                       borderRadius: 2,
@@ -441,11 +331,9 @@ const Dashboard: React.FC = () => {
                         <Typography variant="h6" component="h2" gutterBottom>
                           {note.title}
                         </Typography>
-                        
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                           {note.summary || "No summary available"}
                         </Typography>
-                        
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                           {note.tags.map((tag) => (
                             <Chip 
@@ -453,32 +341,13 @@ const Dashboard: React.FC = () => {
                               label={tag} 
                               size="small" 
                               variant="outlined"
-                              onClick={() => handleTagSelect(tag)}
                             />
                           ))}
                         </Box>
-                        
                         <Typography variant="caption" color="text.secondary">
                           Last updated: {new Date(note.updatedAt).toLocaleDateString()}
                         </Typography>
                       </CardContent>
-                      <CardActions>
-                        <Button 
-                          size="small" 
-                          component={Link} 
-                          to={`/editor?id=${note.id}`}
-                          sx={{ mr: 1 }}
-                        >
-                          Edit
-                        </Button>
-                        <Button 
-                          size="small" 
-                          onClick={() => handleGenerateAIFlashcards(note)}
-                          color="secondary"
-                        >
-                          Generate Flashcards
-                        </Button>
-                      </CardActions>
                     </Card>
                   </Grid>
                 ))}
