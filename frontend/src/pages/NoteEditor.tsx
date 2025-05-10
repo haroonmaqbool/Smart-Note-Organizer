@@ -51,13 +51,14 @@ import {
 import { api, AIModel, Flashcard } from '../services/api';
 import { useApp } from '../context/AppContext';
 import { v4 as uuidv4 } from 'uuid';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import RichTextEditor from '../components/RichTextEditor';
 
 const NoteEditor: React.FC = () => {
   const theme = useTheme();
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const navigate = useNavigate();
+  const location = useLocation();
   
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -71,6 +72,7 @@ const NoteEditor: React.FC = () => {
   const [isTaggingLoading, setIsTaggingLoading] = useState(false);
   const [aiModel, setAiModel] = useState<AIModel>('bart');
   const [availableModel, setAvailableModel] = useState<string | null>(null);
+  const [noteId, setNoteId] = useState<string | null>(null);
   
   // New state for chatbot dialog
   const [chatbotOpen, setChatbotOpen] = useState(false);
@@ -78,6 +80,12 @@ const NoteEditor: React.FC = () => {
   const [generatedTags, setGeneratedTags] = useState<string[]>([]);
   const [generatedFlashcards, setGeneratedFlashcards] = useState<Flashcard[]>([]);
   const [generatedSummary, setGeneratedSummary] = useState('');
+  
+  const showSnackbarMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+    setSnackbarMessage(message);
+    setSnackbarSeverity(severity);
+    setShowSnackbar(true);
+  };
   
   useEffect(() => {
     // Check which AI models are available
@@ -90,7 +98,27 @@ const NoteEditor: React.FC = () => {
     };
     
     checkAvailableModels();
-  }, []);
+    
+    // Check for note ID in URL parameters
+    const searchParams = new URLSearchParams(location.search);
+    const id = searchParams.get('id');
+    
+    if (id) {
+      setNoteId(id);
+      // Find the note in the state
+      const existingNote = state.notes.find(note => note.id === id);
+      
+      if (existingNote) {
+        // Load the note data
+        setTitle(existingNote.title);
+        setContent(existingNote.content);
+        setTags([...existingNote.tags]);
+      } else {
+        // Note not found
+        showSnackbarMessage('Note not found', 'error');
+      }
+    }
+  }, [location.search, state.notes]);
 
   const autoGenerateTags = async (text: string) => {
     if (text.trim().length < 50) return;
@@ -224,12 +252,6 @@ const NoteEditor: React.FC = () => {
     setTags(tags.filter(tag => tag !== tagToRemove));
   };
   
-  const showSnackbarMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
-    setSnackbarMessage(message);
-    setSnackbarSeverity(severity);
-    setShowSnackbar(true);
-  };
-
   const handleSave = async () => {
     if (!title.trim()) {
       setShowSnackbar(true);
@@ -250,35 +272,56 @@ const NoteEditor: React.FC = () => {
         }
       }
       
-      // Create note object
-      const note = {
-        id: uuidv4(),
-        title,
-        content,
-        tags,
-        summary,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      
-      // Save to state context
-      dispatch({ type: 'ADD_NOTE', payload: note });
-      
-      // Show success message
-      setShowSnackbar(true);
-      setSnackbarMessage('Note saved successfully!');
-      setSnackbarSeverity('success');
-      
-      // Reset form after delay
-      setTimeout(() => {
-      setTitle('');
-      setContent('');
-      setTags([]);
-      
-        // Navigate to view all notes
-        navigate('/');
-      }, 1500);
-      
+      if (noteId) {
+        // Update existing note
+        const updatedNote = {
+          id: noteId,
+          title,
+          content,
+          tags,
+          summary,
+          createdAt: state.notes.find(note => note.id === noteId)?.createdAt || new Date(),
+          updatedAt: new Date(),
+        };
+        
+        // Update in state context
+        dispatch({ type: 'UPDATE_NOTE', payload: updatedNote });
+        
+        // Show success message
+        showSnackbarMessage('Note updated successfully!', 'success');
+        
+        // Navigate back after delay
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1500);
+      } else {
+        // Create new note object
+        const note = {
+          id: uuidv4(),
+          title,
+          content,
+          tags,
+          summary,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        
+        // Save to state context
+        dispatch({ type: 'ADD_NOTE', payload: note });
+        
+        // Show success message
+        showSnackbarMessage('Note saved successfully!', 'success');
+        
+        // Reset form after delay
+        setTimeout(() => {
+          setTitle('');
+          setContent('');
+          setTags([]);
+          
+          // Navigate to view all notes
+          navigate('/dashboard');
+        }, 1500);
+      }
     } catch (error) {
       console.error('Error saving note:', error);
       
@@ -291,12 +334,19 @@ const NoteEditor: React.FC = () => {
   };
 
   const handleDiscard = () => {
-    setTitle('');
-    setContent('');
-    setTags([]);
-    
-    // This will trigger the useEffect to update the editor
-    showSnackbarMessage('Note discarded', 'info');
+    if (noteId) {
+      // If editing an existing note, just navigate back
+      showSnackbarMessage('Edit cancelled', 'info');
+      navigate('/dashboard');
+    } else {
+      // If creating a new note, clear the form
+      setTitle('');
+      setContent('');
+      setTags([]);
+      
+      // This will trigger the useEffect to update the editor
+      showSnackbarMessage('Note discarded', 'info');
+    }
   };
 
   const navigateBack = () => {
@@ -310,7 +360,7 @@ const NoteEditor: React.FC = () => {
           <ArrowBack />
         </IconButton>
         <Typography variant="h4" component="h1">
-          {title ? title : 'New Note'}
+          {noteId ? 'Edit Note' : (title ? title : 'New Note')}
         </Typography>
         <Box>
           <Tooltip title="AI Assistant">
@@ -333,7 +383,7 @@ const NoteEditor: React.FC = () => {
             {isLoading ? (
               <CircularProgress size={24} color="inherit" />
             ) : (
-              'Save'
+              noteId ? 'Update' : 'Save'
             )}
           </Button>
         </Box>
@@ -556,21 +606,21 @@ const NoteEditor: React.FC = () => {
               startIcon={<DeleteOutline />}
               onClick={handleDiscard}
             >
-              Discard
-              </Button>
-              <Button
-                variant="contained"
-                color="primary"
-          startIcon={<SaveIcon />}
-                onClick={handleSave}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <CircularProgress size={24} color="inherit" />
-          ) : (
-            'Save Note'
-          )}
-              </Button>
+              {noteId ? 'Cancel' : 'Discard'}
+            </Button>
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<SaveIcon />}
+              onClick={handleSave}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                noteId ? 'Update' : 'Save Note'
+              )}
+            </Button>
       </Box>
 
       {/* Chatbot Dialog */}

@@ -93,10 +93,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   
   // Initialize editor with initial content
   useEffect(() => {
-    if (editorRef.current && initialContent) {
+    if (editorRef.current) {
       editorRef.current.innerHTML = initialContent;
     }
-  }, []);
+  }, [initialContent]);
 
   // Track selection changes to update format buttons
   useEffect(() => {
