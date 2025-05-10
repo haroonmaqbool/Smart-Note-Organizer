@@ -16,4 +16,6 @@ sentencepiece==0.1.99
 protobuf==4.23.4
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.0/en_core_web_sm-3.7.0-py3-none-any.whl
 pillow==9.5.0
-huggingface_hub==0.16.4 
+huggingface_hub==0.16.4
+python-docx==0.8.11
+python-pptx==0.6.21 

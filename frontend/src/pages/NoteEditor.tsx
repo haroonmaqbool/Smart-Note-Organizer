@@ -30,9 +30,12 @@ import {
   DialogActions
 } from '@mui/material';
 import {
-  Upload as UploadIcon,
   Save as SaveIcon,
+  Delete as DeleteIcon,
+  ArrowBack,
+  Psychology as PsychologyIcon,
   Add as AddIcon,
+  DeleteOutline,
   FormatBold,
   FormatItalic,
   FormatListBulleted,
@@ -42,11 +45,8 @@ import {
   FormatQuote,
   Visibility,
   VisibilityOff,
-  DeleteOutline,
   AttachFile,
   AutoAwesome,
-  ArrowBack,
-  Psychology as PsychologyIcon
 } from '@mui/icons-material';
 import { api, AIModel, Flashcard } from '../services/api';
 import { useApp } from '../context/AppContext';
@@ -213,7 +213,7 @@ const NoteEditor: React.FC = () => {
   };
 
   const saveFlashcards = () => {
-    // Convert the API flashcard format to the app's flashcard format
+    // Convert the generated flashcards to the right format
     const flashcardsToSave = generatedFlashcards.map(card => ({
       id: uuidv4(),
       front: card.question,
@@ -229,31 +229,6 @@ const NoteEditor: React.FC = () => {
     // Show success message and close dialog
     showSnackbarMessage('Flashcards saved successfully!', 'success');
     setChatbotOpen(false);
-  };
-
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    try {
-      setIsLoading(true);
-      const response = await api.uploadFile(file);
-      if (response.error) {
-        showSnackbarMessage(`File upload failed: ${response.error}`, 'error');
-        return;
-      }
-      if (response.data?.text) {
-        setContent(response.data.text);
-        autoGenerateTags(response.data.text);
-        showSnackbarMessage('File uploaded successfully', 'success');
-      } else {
-        showSnackbarMessage('File upload failed: No text extracted', 'error');
-      }
-    } catch (error) {
-      console.error('Error uploading file:', error);
-      showSnackbarMessage('Error uploading file', 'error');
-    } finally {
-      setIsLoading(false);
-    }
   };
 
   const handleAddTag = () => {
@@ -397,33 +372,19 @@ const NoteEditor: React.FC = () => {
 
       {/* File upload button and title input */}
       <Box sx={{ mb: 3, display: 'flex', alignItems: 'center' }}>
-        <Button
-          component="label"
+        <TextField
+          fullWidth
           variant="outlined"
-          startIcon={<UploadIcon />}
-          sx={{ mr: 2 }}
-        >
-          Import File
-          <input
-            type="file"
-            hidden
-            accept=".txt,.md,.pdf"
-            onChange={handleFileUpload}
-          />
-        </Button>
-          <TextField
-            fullWidth
-            variant="outlined"
           label="Title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
           InputProps={{
             sx: {
               bgcolor: theme.palette.background.paper,
             },
           }}
         />
-                </Box>
+      </Box>
 
       {/* Editor area */}
       <Card sx={{ mb: 3, overflow: 'visible' }}>
@@ -565,7 +526,7 @@ const NoteEditor: React.FC = () => {
           )}
         </Typography>
         <Paper sx={{ p: 2 }}>
-          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
             {tags.map((tag, index) => (
               <Chip 
                 key={index} 
@@ -576,32 +537,68 @@ const NoteEditor: React.FC = () => {
                 sx={{ m: 0.5 }}
               />
             ))}
-            <Box sx={{ display: 'flex', alignItems: 'center', m: 0.5 }}>
-              <TextField
-                label="Add Tag"
-                variant="outlined"
-                size="small"
-                value={currentTag}
-                onChange={(e) => setCurrentTag(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddTag();
-                  }
-                }}
-                sx={{ mr: 1 }}
-              />
-              <IconButton 
-                onClick={handleAddTag} 
-                color="primary"
-                disabled={!currentTag.trim()}
-              >
-                <AddIcon />
-              </IconButton>
-            </Box>
           </Stack>
-        </Paper>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <TextField
+              label="Add Tag"
+              variant="outlined"
+              size="small"
+              value={currentTag}
+              onChange={(e) => setCurrentTag(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddTag();
+                }
+              }}
+            />
+            <IconButton 
+              onClick={handleAddTag} 
+              color="primary"
+              disabled={!currentTag.trim()}
+            >
+              <AddIcon />
+            </IconButton>
+            
+            <Button
+              variant="outlined"
+              color="secondary"
+              startIcon={<AutoAwesome />}
+              onClick={() => autoGenerateTags(content)}
+              disabled={isTaggingLoading || content.length < 50}
+              sx={{ ml: 1 }}
+            >
+              Auto-Generate Tags
+            </Button>
           </Box>
+          
+          {content.length < 50 && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Add more content to enable auto-tag generation
+            </Typography>
+          )}
+          
+          {tags.length > 0 && (
+            <Box sx={{ mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                Recent tags:
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                {tags.slice(0, 5).map((tag, index) => (
+                  <Chip 
+                    key={index} 
+                    label={tag} 
+                    size="small"
+                    variant="outlined"
+                    sx={{ m: 0.5 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+          )}
+        </Paper>
+      </Box>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
             <Button
@@ -713,9 +710,9 @@ const NoteEditor: React.FC = () => {
                               sx={{ mr: 0.5, mt: 0.5 }}
                             />
                           ))}
-          </Box>
-        </CardContent>
-      </Card>
+                        </Box>
+                      </CardContent>
+                    </Card>
                   ))}
                   <Button 
                     variant="contained" 

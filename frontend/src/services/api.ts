@@ -3,21 +3,73 @@
 // 1. In development: Use the proxy setup, but with better error handling
 // 2. In production: Use the full backend URL
 
+// Get environment variable - since TypeScript definitions for import.meta.env can be problematic,
+// we'll use a simpler approach for this project
+let envApiBaseUrl: string | undefined;
+try {
+  // @ts-ignore - Vite specific property
+  envApiBaseUrl = import.meta.env?.VITE_API_BASE_URL;
+} catch (e) {
+  console.warn('Could not access import.meta.env', e);
+}
+
 // Check if we're in development mode
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// Set the base API URL
-export let API_BASE_URL = '/api';
-
-// In production, we need to specify the full backend URL
-if (!isDevelopment) {
-  // Use the same protocol and hostname, but backend port
-  API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000/api`;
-}
+// FIXME: Explicitly set the backend URL for development
+export let API_BASE_URL = 'http://localhost:8000/api';
 
 // Debug information to help troubleshoot connection issues
 console.log(`API Base URL: ${API_BASE_URL}`);
-console.log(`Running in ${isDevelopment ? 'development' : 'production'} mode`);
+console.log(`Using ${envApiBaseUrl ? 'environment variable' : 'direct URL'} for API URL`);
+
+// Global connectivity state
+export let isConnected = false;
+
+// Flag to enable mock mode when backend is unavailable
+export let mockModeEnabled = false;
+
+// Sample mock data to use when backend is unavailable
+const MOCK_DATA = {
+  notes: [
+    {
+      id: "1",
+      title: "Machine Learning Basics",
+      content: "<p>Introduction to machine learning concepts including supervised and unsupervised learning.</p>",
+      summary: "An overview of fundamental machine learning concepts and approaches.",
+      tags: ["ML", "AI", "data science"],
+      created_at: "2023-10-15T14:30:00.000Z",
+      updated_at: "2023-10-15T15:45:00.000Z"
+    },
+    {
+      id: "2",
+      title: "Python Programming Tips",
+      content: "<p>Useful Python programming techniques and best practices.</p>",
+      summary: "A collection of advanced Python tips for better code quality.",
+      tags: ["Python", "programming", "tips"],
+      created_at: "2023-10-16T10:15:00.000Z",
+      updated_at: "2023-10-16T11:30:00.000Z"
+    }
+  ],
+  flashcards: [
+    {
+      id: "1",
+      title: "Machine Learning",
+      question: "What is supervised learning?",
+      answer: "A type of machine learning where the model is trained on labeled data and learns to predict outputs based on inputs.",
+      tags: ["ML", "AI"],
+      created_at: "2023-10-15T16:00:00.000Z"
+    },
+    {
+      id: "2",
+      title: "Python",
+      question: "What are list comprehensions in Python?",
+      answer: "A concise way to create lists based on existing lists or iterables. Example: [x*2 for x in range(10)]",
+      tags: ["Python", "programming"],
+      created_at: "2023-10-16T12:00:00.000Z"
+    }
+  ]
+};
 
 // Helper function to handle API errors consistently
 const handleApiError = (error: any, defaultMessage: string): string => {
@@ -72,6 +124,67 @@ export interface ChatbotResponse {
 }
 
 export const api = {
+  // Enable mock mode when backend is unavailable
+  enableMockMode() {
+    mockModeEnabled = true;
+    console.warn('API mock mode enabled - using simulated data');
+  },
+  
+  // Disable mock mode
+  disableMockMode() {
+    mockModeEnabled = false;
+    console.log('API mock mode disabled - using real backend');
+  },
+  
+  // Check if mock mode is enabled
+  isMockModeEnabled() {
+    return mockModeEnabled;
+  },
+  
+  // Check connectivity with the backend
+  async checkConnection(): Promise<boolean> {
+    try {
+      console.log('Checking backend connectivity at:', `${API_BASE_URL}/ping/`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced to 3 second timeout
+      
+      const response = await fetch(`${API_BASE_URL}/ping/`, {
+        method: 'GET',
+        signal: controller.signal,
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        }
+      }).catch(error => {
+        console.error('Fetch error during connectivity check:', error);
+        return null; // Return null to indicate a network error
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response && response.ok) {
+        const data = await response.json();
+        isConnected = data.status === 'ok';
+        console.log('Backend connectivity check result:', isConnected ? 'Connected' : 'Disconnected');
+        
+        // Disable mock mode if we're connected
+        if (isConnected) {
+          this.disableMockMode();
+        }
+        
+        return isConnected;
+      }
+      
+      console.warn('Backend connectivity check failed: server returned error or not found');
+      isConnected = false;
+      return false;
+    } catch (error) {
+      console.error('Backend connectivity check failed:', error);
+      isConnected = false;
+      return false;
+    }
+  },
+
   async summarize(text: string, aiModel?: AIModel): Promise<ApiResponse<{ summary: string, model_used: string }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/summarize`, {

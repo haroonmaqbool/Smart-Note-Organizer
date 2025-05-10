@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, CssBaseline, Alert, Snackbar, responsiveFontSizes } from '@mui/material';
+import { ThemeProvider, CssBaseline, Alert, Snackbar, responsiveFontSizes, Button } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
 import { useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
@@ -9,6 +9,48 @@ import Search from './pages/Search';
 import Flashcards from './pages/Flashcards';
 import { AppProvider, useApp } from './context/AppContext';
 import { api, API_BASE_URL } from './services/api';
+
+// Add MOCK_DATA definition for offline mode
+const MOCK_DATA = {
+  notes: [
+    {
+      id: "1",
+      title: "Machine Learning Basics",
+      content: "<p>Introduction to machine learning concepts including supervised and unsupervised learning.</p>",
+      summary: "An overview of fundamental machine learning concepts and approaches.",
+      tags: ["ML", "AI", "data science"],
+      created_at: "2023-10-15T14:30:00.000Z",
+      updated_at: "2023-10-15T15:45:00.000Z"
+    },
+    {
+      id: "2",
+      title: "Python Programming Tips",
+      content: "<p>Useful Python programming techniques and best practices.</p>",
+      summary: "A collection of advanced Python tips for better code quality.",
+      tags: ["Python", "programming", "tips"],
+      created_at: "2023-10-16T10:15:00.000Z",
+      updated_at: "2023-10-16T11:30:00.000Z"
+    }
+  ],
+  flashcards: [
+    {
+      id: "1",
+      title: "Machine Learning",
+      question: "What is supervised learning?",
+      answer: "A type of machine learning where the model is trained on labeled data and learns to predict outputs based on inputs.",
+      tags: ["ML", "AI"],
+      created_at: "2023-10-15T16:00:00.000Z"
+    },
+    {
+      id: "2",
+      title: "Python",
+      question: "What are list comprehensions in Python?",
+      answer: "A concise way to create lists based on existing lists or iterables. Example: [x*2 for x in range(10)]",
+      tags: ["Python", "programming"],
+      created_at: "2023-10-16T12:00:00.000Z"
+    }
+  ]
+};
 
 const baseTheme = createTheme({
   palette: {
@@ -375,6 +417,8 @@ const theme = responsiveFontSizes(baseTheme);
 // Separate component to handle data loading
 const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [backendReady, setBackendReady] = useState<boolean>(false);
+  const [showNotification, setShowNotification] = useState<boolean>(false);
+  const [retryCount, setRetryCount] = useState<number>(0);
   const { dispatch } = useApp();
   
   // Function to fetch notes and flashcards from backend
@@ -420,51 +464,143 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     }
   }, [dispatch]);
   
+  // Close connection notification
+  const handleCloseNotification = () => {
+    setShowNotification(false);
+  };
+
+  // Try to start the backend server
+  const startBackendServer = useCallback(async () => {
+    // This is just a placeholder - in a real app you'd have a way to start the server
+    // or provide instructions to the user on how to start it
+    console.log('Attempting to connect to backend...');
+    
+    // Simply update the UI to show we're retrying
+    setRetryCount(prev => prev + 1);
+    
+    // Check connection again
+    const connected = await api.checkConnection();
+    if (connected) {
+      console.log('Backend connection established on retry');
+      setBackendReady(true);
+      fetchNotesAndFlashcards();
+    } else {
+      console.error('Backend still unavailable after retry attempt');
+    }
+  }, [fetchNotesAndFlashcards]);
+  
   useEffect(() => {
-    // Check backend health on startup
-    const checkBackendHealth = async () => {
+    let connected = false;
+    
+    // Check backend connectivity on startup
+    const checkBackendStatus = async () => {
       try {
-        const response = await api.healthCheck();
-        if (response && response.status === 'healthy') {
-          console.log('Backend is ready:', response);
+        // First try to connect
+        connected = await api.checkConnection();
+        
+        if (connected) {
+          console.log('Backend connection established');
           setBackendReady(true);
+          setShowNotification(false);
           
-          // Fetch notes and flashcards after confirming backend is available
-          fetchNotesAndFlashcards();
+          // Also check the health endpoint for more details
+          const healthResponse = await api.healthCheck();
+          if (healthResponse && healthResponse.status === 'healthy') {
+            console.log('Backend is healthy:', healthResponse);
+            
+            // Fetch notes and flashcards after confirming backend is available
+            fetchNotesAndFlashcards();
+          } else {
+            console.warn('Backend is connected but health check indicates issues:', healthResponse);
+            // Still set to ready since basic connectivity is working
+            setBackendReady(true);
+          }
         } else {
-          console.error('Backend health check failed:', response);
+          console.error('Cannot connect to backend services');
           setBackendReady(false);
+          
+          // Only show notification after first 2 failed attempts
+          if (retryCount >= 2) {
+            setShowNotification(true);
+            
+            // Enable mock mode after retrying
+            if (!api.isMockModeEnabled()) {
+              api.enableMockMode();
+              // Load mock data into the app state
+              dispatch({ 
+                type: 'SET_NOTES', 
+                payload: MOCK_DATA.notes.map((note: any) => ({
+                  id: note.id,
+                  title: note.title,
+                  content: note.content,
+                  summary: note.summary,
+                  tags: note.tags,
+                  createdAt: new Date(note.created_at),
+                  updatedAt: new Date(note.updated_at)
+                }))
+              });
+              
+              dispatch({ 
+                type: 'SET_FLASHCARDS', 
+                payload: MOCK_DATA.flashcards.map((card: any) => ({
+                  id: card.id,
+                  front: card.question,
+                  back: card.answer,
+                  tags: card.tags,
+                  createdAt: new Date(card.created_at)
+                }))
+              });
+              
+              console.log('Loaded mock data as backend is unavailable');
+            }
+          }
         }
       } catch (error) {
-        console.error('Failed to check backend health:', error);
+        console.error('Failed to check backend connectivity:', error);
         setBackendReady(false);
+        
+        // Only show notification after first 2 failed attempts
+        if (retryCount >= 2) {
+          setShowNotification(true);
+        }
       }
     };
     
-    checkBackendHealth();
-    // Recheck every 30 seconds in case backend restarts
-    const interval = setInterval(checkBackendHealth, 30000);
+    checkBackendStatus();
+    
+    // Recheck every 15 seconds in case backend restarts
+    const interval = setInterval(checkBackendStatus, 15000);
     return () => clearInterval(interval);
-  }, [fetchNotesAndFlashcards]);
+  }, [fetchNotesAndFlashcards, retryCount, dispatch]);
 
   return (
     <>
       {children}
-      {!backendReady && (
-        <div style={{ 
-          position: 'fixed', 
-          top: 0, 
-          left: 0, 
-          right: 0,
-          padding: '8px',
-          background: '#f44336',
-          color: 'white',
-          textAlign: 'center',
-          zIndex: 9999
-        }}>
+      
+      {/* Snackbar notification instead of fixed banner */}
+      <Snackbar 
+        open={showNotification && !backendReady} 
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        autoHideDuration={null} // Don't auto-hide
+      >
+        <Alert 
+          severity="error" 
+          variant="filled"
+          onClose={handleCloseNotification}
+          action={
+            <Button 
+              color="inherit" 
+              size="small" 
+              onClick={startBackendServer}
+            >
+              Retry
+            </Button>
+          }
+          sx={{ width: '100%' }}
+        >
           Cannot connect to backend services. Some features might not work properly.
-        </div>
-      )}
+        </Alert>
+      </Snackbar>
     </>
   );
 };

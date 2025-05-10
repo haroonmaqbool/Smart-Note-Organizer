@@ -19,7 +19,8 @@ import {
   Collapse,
   TextField,
   Menu,
-  MenuItem
+  MenuItem,
+  styled
 } from '@mui/material';
 import {
   FormatBold,
@@ -43,10 +44,77 @@ import {
   FormatSize,
   TextIncrease,
   TextDecrease,
-  ColorLens
+  UploadFile
 } from '@mui/icons-material';
 import Tesseract from 'tesseract.js';
+import * as pdfjs from 'pdfjs-dist';
+import { getDocument, PDFDocumentProxy } from 'pdfjs-dist';
 import './RichTextEditor.css';
+
+// Set the worker source path
+pdfjs.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+// Add interface for DOCX processing (since we can't install mammoth directly)
+interface MammothResult {
+  value: string;
+  messages: Array<{ type: string; message: string }>;
+}
+
+// DOCX processing function (to be implemented when mammoth is available)
+const processDocx = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  try {
+    // Simplified docx parsing when mammoth isn't installed
+    // This is a placeholder that extracts text from XML
+    const decoder = new TextDecoder('utf-8');
+    const text = decoder.decode(arrayBuffer);
+    
+    // Extract text content from the XML (simplified)
+    let extractedText = '';
+    const paragraphMatches = text.match(/<w:p.*?>.*?<\/w:p>/gs) || [];
+    
+    paragraphMatches.forEach(paragraph => {
+      const textMatches = paragraph.match(/<w:t.*?>(.*?)<\/w:t>/gs) || [];
+      const paragraphText = textMatches.map(t => t.replace(/<.*?>/g, '')).join('');
+      if (paragraphText.trim()) {
+        extractedText += paragraphText + '\n\n';
+      }
+    });
+    
+    return extractedText || 'No text could be extracted from the document.';
+  } catch (error) {
+    console.error('Error processing DOCX:', error);
+    return 'Error processing DOCX file. Please try a different file.';
+  }
+};
+
+// PDF processing function
+const processPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => {
+  try {
+    const pdf = await getDocument({ data: arrayBuffer }).promise;
+    let extractedText = '';
+    
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items
+        .map((item: any) => item.str)
+        .join(' ');
+      
+      extractedText += pageText + '\n\n';
+    }
+    
+    return extractedText || 'No text could be extracted from the PDF.';
+  } catch (error) {
+    console.error('Error processing PDF:', error);
+    return 'Error processing PDF file. Please try a different file.';
+  }
+};
+
+// Add interface for file import response
+interface ImportResponse {
+  filename: string;
+  text: string;
+}
 
 interface RichTextEditorProps {
   initialContent?: string;
@@ -54,6 +122,25 @@ interface RichTextEditorProps {
   placeholder?: string;
   minHeight?: number;
 }
+
+// Add styled component for drag-drop zone
+const DropZone = styled('div')(({ theme }) => ({
+  border: `2px dashed ${alpha(theme.palette.primary.main, 0.3)}`,
+  borderRadius: theme.shape.borderRadius,
+  padding: theme.spacing(2),
+  textAlign: 'center',
+  backgroundColor: alpha(theme.palette.primary.main, 0.05),
+  cursor: 'pointer',
+  transition: 'all 0.2s ease',
+  '&:hover': {
+    backgroundColor: alpha(theme.palette.primary.main, 0.1),
+    borderColor: theme.palette.primary.main,
+  },
+  '&.drag-active': {
+    backgroundColor: alpha(theme.palette.primary.main, 0.2),
+    borderColor: theme.palette.primary.main,
+  }
+}));
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   initialContent = '',
@@ -65,9 +152,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const editorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
   
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [notification, setNotification] = useState({ 
     open: false, 
@@ -77,6 +167,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [expandedToolbar, setExpandedToolbar] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const editorContentRef = useRef(initialContent);
   
   // Link dialog states
@@ -87,10 +179,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   
   // Heading menu state
   const [headingMenuAnchor, setHeadingMenuAnchor] = useState<null | HTMLElement>(null);
-  
-  // Color selection menu
-  const [colorMenuAnchor, setColorMenuAnchor] = useState<null | HTMLElement>(null);
-  const colors = ['#000000', '#e60000', '#ff9900', '#ffff00', '#008a00', '#0066cc', '#9933ff', '#ffffff'];
   
   // Initialize editor with initial content
   const firstMount = useRef(true);
@@ -238,13 +326,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     handleContentChange();
   };
 
-  // Apply text color
-  const applyTextColor = (color: string) => {
-    document.execCommand('foreColor', false, color);
-    handleContentChange();
-    setColorMenuAnchor(null);
-  };
-
   // Insert link
   const openLinkDialog = () => {
     const selection = window.getSelection();
@@ -318,33 +399,78 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   // OCR Image/PDF processing
-  const processImageOrPdf = async (file: File) => {
+  const processFile = async (file: File) => {
     setIsProcessing(true);
     setOcrProgress(0);
     
     try {
-      // For simplicity, only using Tesseract for images
-      // A real implementation would use PDF.js for PDFs first
-      
-      Tesseract.recognize(file, 'eng', {
-        logger: (data) => {
-          if (data.status === 'recognizing text') {
-            setOcrProgress(Math.round(data.progress * 100));
+      // Process based on file type
+      if (file.type === 'application/pdf') {
+        // Handle PDF files with pdfjs
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            if (e.target?.result) {
+              const pdfText = await processPdf(e.target.result as ArrayBuffer);
+              setPreviewText(pdfText);
+              setShowPreview(true);
+              setIsProcessing(false);
+            }
+          } catch (error) {
+            console.error('PDF processing error:', error);
+            setNotification({
+              open: true,
+              message: 'Error processing the PDF file. Please try again.',
+              severity: 'error'
+            });
+            setIsProcessing(false);
           }
-        }
-      }).then(result => {
-        setPreviewText(result.data.text);
-        setShowPreview(true);
-        setIsProcessing(false);
-      }).catch(error => {
-        console.error('OCR processing error:', error);
-        setNotification({
-          open: true,
-          message: 'Error processing the file. Please try again.',
-          severity: 'error'
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+        // Handle DOCX files
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            if (e.target?.result) {
+              const docxText = await processDocx(e.target.result as ArrayBuffer);
+              setPreviewText(docxText);
+              setShowPreview(true);
+              setIsProcessing(false);
+            }
+          } catch (error) {
+            console.error('DOCX processing error:', error);
+            setNotification({
+              open: true,
+              message: 'Error processing the DOCX file. Please try again.',
+              severity: 'error'
+            });
+            setIsProcessing(false);
+          }
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        // Use Tesseract for image OCR
+        Tesseract.recognize(file, 'eng', {
+          logger: (data) => {
+            if (data.status === 'recognizing text') {
+              setOcrProgress(Math.round(data.progress * 100));
+            }
+          }
+        }).then(result => {
+          setPreviewText(result.data.text);
+          setShowPreview(true);
+          setIsProcessing(false);
+        }).catch(error => {
+          console.error('OCR processing error:', error);
+          setNotification({
+            open: true,
+            message: 'Error processing the file. Please try again.',
+            severity: 'error'
+          });
+          setIsProcessing(false);
         });
-        setIsProcessing(false);
-      });
+      }
     } catch (error) {
       console.error('Error processing file:', error);
       setNotification({
@@ -365,19 +491,41 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     if (!allowedTypes.includes(file.type)) {
       setNotification({
         open: true,
-        message: 'Only JPG, PNG, and PDF files are supported.',
+        message: 'Only JPG, PNG, and PDF files are supported for OCR.',
         severity: 'warning'
       });
       return;
     }
     
-    processImageOrPdf(file);
+    processFile(file);
   };
 
-  // Insert OCR text into editor
-  const insertOcrText = () => {
+  // Handle document upload (PDF/DOCX)
+  const handleDocumentUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    const allowedTypes = [
+      'application/pdf', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (!allowedTypes.includes(file.type)) {
+      setNotification({
+        open: true,
+        message: 'Only PDF and DOCX files are supported.',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    processFile(file);
+  };
+
+  // Insert text into editor
+  const insertExtractedText = () => {
     if (editorRef.current && previewText) {
-      // Clean and format the OCR text
+      // Clean and format the text
       const formattedText = previewText
         .split('\n\n')
         .map(paragraph => `<p>${paragraph.replace(/\n/g, ' ')}</p>`)
@@ -516,6 +664,136 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   };
 
+  // Handle drag events for file import
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      handleFileImportProcess(file);
+    }
+  };
+  
+  // Open import dialog
+  const openImportDialog = () => {
+    setImportDialogOpen(true);
+  };
+  
+  // Handle file selection from input element
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleFileImportProcess(file);
+    }
+    setImportDialogOpen(false);
+  };
+  
+  // Process the file upload and import
+  const handleFileImportProcess = async (file: File) => {
+    const acceptedTypes = [
+      'application/pdf', 
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'image/jpeg',
+      'image/jpg',
+      'image/png'
+    ];
+    
+    if (!acceptedTypes.includes(file.type)) {
+      setNotification({
+        open: true,
+        message: 'Unsupported file type. Please upload PDF, Word, PowerPoint, or image files.',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    setIsProcessing(true);
+    
+    // Create FormData for file upload
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const response = await fetch('/api/import/', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to import file');
+      }
+      
+      const data: ImportResponse = await response.json();
+      
+      // Insert content into editor
+      if (editorRef.current && data.text) {
+        const importHeader = `<p><strong>Imported from:</strong> ${data.filename}</p>`;
+        const importContent = data.text
+          .split('\n\n')
+          .map(paragraph => `<p>${paragraph.replace(/\n/g, ' ')}</p>`)
+          .join('');
+        
+        // Insert at cursor position if possible, otherwise append
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          range.deleteContents();
+          
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = importHeader + importContent;
+          
+          const fragment = document.createDocumentFragment();
+          while (tempDiv.firstChild) {
+            fragment.appendChild(tempDiv.firstChild);
+          }
+          
+          range.insertNode(fragment);
+        } else {
+          // Append to end if no selection
+          editorRef.current.innerHTML += importHeader + importContent;
+        }
+        
+        handleContentChange();
+      }
+      
+      setNotification({
+        open: true,
+        message: 'File imported successfully',
+        severity: 'success'
+      });
+      
+    } catch (error) {
+      console.error('Error importing file:', error);
+      setNotification({
+        open: true,
+        message: 'Error importing file. Please try again.',
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   return (
     <Box 
       sx={{ 
@@ -627,42 +905,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               <FormatUnderlined fontSize="small" />
             </IconButton>
           </Tooltip>
-
-          <Tooltip title="Text Color">
-            <IconButton 
-              size="small" 
-              onClick={(e) => setColorMenuAnchor(e.currentTarget)}
-              sx={{ color: theme.palette.text.secondary }}
-            >
-              <ColorLens fontSize="small" />
-            </IconButton>
-          </Tooltip>
-          
-          {/* Color Menu */}
-          <Menu
-            anchorEl={colorMenuAnchor}
-            open={Boolean(colorMenuAnchor)}
-            onClose={() => setColorMenuAnchor(null)}
-          >
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, p: 1, width: 150 }}>
-              {colors.map((color) => (
-                <Box 
-                  key={color}
-                  onClick={() => applyTextColor(color)}
-                  sx={{
-                    width: 24,
-                    height: 24,
-                    backgroundColor: color,
-                    cursor: 'pointer',
-                    border: `1px solid ${alpha(theme.palette.common.black, 0.2)}`,
-                    '&:hover': {
-                      boxShadow: `0 0 0 1px ${theme.palette.primary.main}`,
-                    }
-                  }}
-                />
-              ))}
-            </Box>
-          </Menu>
           
           <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
           
@@ -819,12 +1061,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             onChange={handleInsertImage}
           />
           
-          {/* OCR Button */}
-          <Tooltip title="Extract text from image/PDF">
+          {/* Add Import File button to the toolbar */}
+          <Tooltip title="Import File (PDF, Word, Image, PPT)">
             <IconButton 
               size="small" 
               disabled={isProcessing}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openImportDialog}
               sx={{
                 color: isProcessing 
                   ? theme.palette.action.disabled 
@@ -834,17 +1076,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               {isProcessing ? (
                 <CircularProgress size={18} />
               ) : (
-                <CloudUpload fontSize="small" />
+                <UploadFile fontSize="small" />
               )}
             </IconButton>
           </Tooltip>
           
           <input
-            ref={fileInputRef}
+            ref={importFileRef}
             type="file"
-            accept=".jpg,.jpeg,.png,.pdf"
+            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png"
             style={{ display: 'none' }}
-            onChange={handleFileUpload}
+            onChange={handleFileSelect}
             disabled={isProcessing}
           />
           
@@ -931,7 +1173,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         maxWidth="md"
       >
         <DialogTitle>
-          OCR Result Preview
+          Document Text Preview
         </DialogTitle>
         <DialogContent>
           <TextField
@@ -941,7 +1183,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             value={previewText}
             onChange={(e) => setPreviewText(e.target.value)}
             variant="outlined"
-            placeholder="OCR text will appear here"
+            placeholder="Extracted text will appear here"
             sx={{ my: 1 }}
           />
           <Typography variant="caption" color="text.secondary">
@@ -955,7 +1197,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <Button 
             variant="contained" 
             startIcon={<Check />}
-            onClick={insertOcrText}
+            onClick={insertExtractedText}
           >
             Insert Text
           </Button>
@@ -996,6 +1238,54 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             disabled={!linkUrl}
           >
             Insert
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* File Import Dialog */}
+      <Dialog 
+        open={importDialogOpen} 
+        onClose={() => setImportDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Import File
+        </DialogTitle>
+        <DialogContent>
+          <DropZone
+            className={isDragging ? 'drag-active' : ''}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            onClick={() => importFileRef.current?.click()}
+          >
+            <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+              <UploadFile fontSize="large" color="primary" />
+              <Typography variant="body1">
+                Drag & drop a file here, or click to select
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Supported formats: PDF, Word (DOCX), PowerPoint (PPTX), Images (JPG, PNG)
+              </Typography>
+              {isProcessing && (
+                <CircularProgress size={24} sx={{ mt: 2 }} />
+              )}
+            </Box>
+          </DropZone>
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png"
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+            disabled={isProcessing}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImportDialogOpen(false)}>
+            Cancel
           </Button>
         </DialogActions>
       </Dialog>

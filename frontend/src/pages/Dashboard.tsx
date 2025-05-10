@@ -59,10 +59,28 @@ const Dashboard: React.FC = () => {
     message: '', 
     severity: 'success' as 'success' | 'error' | 'info' | 'warning' 
   });
+  
+  // Add state for tag filtering
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   // Calculate some stats
   const totalNotes = notes.length;
   const totalTags = [...new Set(notes.flatMap(note => note.tags))].length;
+  
+  // Get all unique tags and their frequency
+  const tagFrequency = notes.flatMap(note => note.tags).reduce((acc, tag) => {
+    acc[tag] = (acc[tag] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  
+  // Sort tags by frequency
+  const sortedTags = Object.keys(tagFrequency).sort((a, b) => tagFrequency[b] - tagFrequency[a]);
+  
+  // Filter notes by selected tag
+  const filteredNotes = selectedTag 
+    ? notes.filter(note => note.tags.includes(selectedTag))
+    : notes;
+    
   const recentlyUpdated = [...notes].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   ).slice(0, 3);
@@ -216,18 +234,18 @@ const Dashboard: React.FC = () => {
       <Paper 
         elevation={0} 
         sx={{ 
-          p: 3, 
-          mb: 4,
+          p: 2, 
+          mb: 3,
           borderRadius: 2, 
           border: `1px solid ${theme.palette.divider}`,
           background: `linear-gradient(to right, ${alpha(theme.palette.primary.main, 0.02)}, ${alpha(theme.palette.background.paper, 0.7)})`
         }}
       >
-        <Typography variant="h5" sx={{ mb: 3, fontWeight: 600 }}>
+        <Typography variant="h5" sx={{ mb: 2, fontWeight: 600 }}>
           Overview
         </Typography>
         
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           <Grid item xs={12} sm={4}>
             <StatCard 
               icon={<NoteIcon />} 
@@ -262,7 +280,9 @@ const Dashboard: React.FC = () => {
             p: 3, 
             borderRadius: 2, 
             border: `1px solid ${theme.palette.divider}`,
-            height: '100%'
+            height: '100%',
+            maxHeight: { xs: '600px', md: 'auto' },
+            overflow: { xs: 'auto', md: 'visible' }
           }}>
             <Box sx={{ 
               display: 'flex', 
@@ -271,19 +291,9 @@ const Dashboard: React.FC = () => {
               mb: 3 
             }}>
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                My Notes
+                My Notes {selectedTag && `- Tagged: ${selectedTag}`}
               </Typography>
               <Box>
-                <Button 
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  component={Link}
-                  to="/editor"
-                  sx={{ mr: 2 }}
-                >
-                  New Note
-                </Button>
                 <Button 
                   component={Link} 
                   to="/search"
@@ -295,7 +305,47 @@ const Dashboard: React.FC = () => {
               </Box>
             </Box>
             <Divider sx={{ mb: 3 }} />
-            {notes.length === 0 ? (
+            
+            {/* Tag Cloud */}
+            {sortedTags.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Filter by Tag:
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {selectedTag && (
+                    <Chip 
+                      label="Clear Filter"
+                      onClick={() => setSelectedTag(null)}
+                      color="default"
+                      onDelete={() => setSelectedTag(null)}
+                      deleteIcon={<ClearIcon />}
+                      sx={{ 
+                        borderRadius: '16px',
+                        mb: 1,
+                        bgcolor: alpha(theme.palette.error.main, 0.1),
+                        color: theme.palette.error.main
+                      }}
+                    />
+                  )}
+                  {sortedTags.slice(0, 10).map(tag => (
+                    <Chip 
+                      key={tag}
+                      label={tag}
+                      onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
+                      color={tag === selectedTag ? "primary" : "default"}
+                      sx={{ 
+                        borderRadius: '16px',
+                        fontWeight: tag === selectedTag ? 'bold' : 'normal',
+                        fontSize: `${Math.min(14 + tagFrequency[tag] * 0.5, 18)}px`
+                      }}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+            
+            {filteredNotes.length === 0 ? (
               <Box sx={{ 
                 display: 'flex', 
                 flexDirection: 'column', 
@@ -316,8 +366,8 @@ const Dashboard: React.FC = () => {
                 </Button>
               </Box>
             ) : (
-              <Grid container spacing={3}>
-                {notes.map((note) => (
+              <Grid container spacing={2}>
+                {filteredNotes.map((note) => (
                   <Grid item xs={12} key={note.id}>
                     <Card sx={{ 
                       borderRadius: 2,
@@ -325,7 +375,8 @@ const Dashboard: React.FC = () => {
                       '&:hover': {
                         boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
                         transform: 'translateY(-3px)'
-                      }
+                      },
+                      p: 1
                     }}>
                       <CardContent>
                         <Typography variant="h6" component="h2" gutterBottom>
@@ -340,7 +391,14 @@ const Dashboard: React.FC = () => {
                               key={tag} 
                               label={tag} 
                               size="small" 
-                              variant="outlined"
+                              color="primary"
+                              sx={{ 
+                                borderRadius: '16px',
+                                px: 1,
+                                '&:hover': {
+                                  backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                                }
+                              }}
                             />
                           ))}
                         </Box>
@@ -362,7 +420,8 @@ const Dashboard: React.FC = () => {
             p: 3, 
             borderRadius: 2, 
             border: `1px solid ${theme.palette.divider}`,
-            height: '100%'
+            height: '100%',
+            maxHeight: { xs: 'auto', md: '100%' }
           }}>
             <Typography variant="h5" sx={{ mb: 3, fontWeight: 600 }}>
               Quick Tools
@@ -450,7 +509,7 @@ const Dashboard: React.FC = () => {
                 </Avatar>
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    New Note
+                    Create Note
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     Create a new note with AI assistance
@@ -502,8 +561,13 @@ const Dashboard: React.FC = () => {
                               key={tagIndex} 
                               label={tag} 
                               size="small" 
-                              variant="outlined"
-                              sx={{ mr: 0.5, mt: 0.5 }}
+                              color="secondary"
+                              sx={{ 
+                                mr: 0.5, 
+                                mt: 0.5, 
+                                borderRadius: '16px',
+                                px: 1 
+                              }}
                             />
                           ))}
                         </Box>

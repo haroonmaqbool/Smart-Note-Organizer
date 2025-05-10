@@ -11,14 +11,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174,
+    port: 5173,
     host: true, // Allow connections from network
-    strictPort: true, // Don't try other ports if 5174 is taken
+    strictPort: false, // Try other ports if 5173 is taken
     proxy: {
       '/api': {
         target: 'http://localhost:8000', // Django backend port
         changeOrigin: true,
         secure: false,
+        ws: true,
         rewrite: (path) => path,
         configure: (proxy, _options) => {
           proxy.on('error', (err, _req, _res) => {

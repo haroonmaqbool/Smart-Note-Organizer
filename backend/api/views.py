@@ -17,6 +17,10 @@ import os
 import pytesseract
 from PIL import Image
 import io
+import PyPDF2
+import docx
+from pptx import Presentation
+import logging
 
 # Load initial mock data into database
 def load_mock_data():
@@ -54,6 +58,15 @@ try:
     load_mock_data()
 except Exception as e:
     print(f"Error loading mock data: {e}")
+
+# Ping endpoint for health checking
+@api_view(['GET'])
+def ping(request):
+    """Simple ping endpoint to verify API connectivity"""
+    return Response({
+        "status": "ok",
+        "message": "Backend API is operational"
+    })
 
 # Health check endpoint
 @api_view(['GET'])
@@ -416,3 +429,154 @@ A: [clear, concise answer that fully addresses the question]
         return Response({"flashcards": flashcards})
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Import file endpoint
+@api_view(['POST'])
+@parser_classes([MultiPartParser, FormParser])
+def import_file(request):
+    """Import and extract text from various file types (PDF, Word, PowerPoint, Images)"""
+    logger = logging.getLogger(__name__)
+    
+    if 'file' not in request.FILES:
+        return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    file = request.FILES['file']
+    
+    if not file.name:
+        return Response({"error": "No file selected"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    # Check file size (limit to 10MB)
+    max_size = 10 * 1024 * 1024  # 10MB in bytes
+    if file.size > max_size:
+        return Response({"error": "File is too large. Maximum size is 10MB."}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        filename = file.name
+        logger.info(f"Processing file: {filename} ({file.size} bytes, type: {file.content_type})")
+        file_ext = filename.split('.')[-1].lower()
+        
+        if file_ext == 'pdf':
+            # Process PDF file
+            try:
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+                if len(pdf_reader.pages) == 0:
+                    return Response({"error": "The PDF file appears to be empty or damaged."}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+                                   
+                text = ""
+                for page in pdf_reader.pages:
+                    page_text = page.extract_text()
+                    if page_text:
+                        text += page_text + "\n\n"
+                
+                if not text.strip():
+                    return Response({"error": "No text could be extracted from the PDF file. It may be a scanned document or image-based PDF."}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"PDF processing error: {str(e)}")
+                return Response({"error": f"Failed to process PDF file: {str(e)}"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+                
+        elif file_ext == 'docx':
+            # Process Word document
+            try:
+                doc = docx.Document(io.BytesIO(file.read()))
+                text = ""
+                for para in doc.paragraphs:
+                    if para.text:
+                        text += para.text + "\n\n"
+                        
+                if not text.strip():
+                    return Response({"error": "The Word document appears to be empty or contains no readable text."}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"DOCX processing error: {str(e)}")
+                return Response({"error": f"Failed to process Word document: {str(e)}"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+                    
+        elif file_ext == 'pptx':
+            # Process PowerPoint presentation
+            try:
+                prs = Presentation(io.BytesIO(file.read()))
+                text = ""
+                for i, slide in enumerate(prs.slides):
+                    slide_text = ""
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text:
+                            slide_text += shape.text + "\n"
+                    
+                    if slide_text.strip():
+                        text += f"Slide {i+1}:\n{slide_text}\n---\n\n"
+                
+                if not text.strip():
+                    return Response({"error": "The PowerPoint presentation appears to be empty or contains no readable text."}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"PPTX processing error: {str(e)}")
+                return Response({"error": f"Failed to process PowerPoint presentation: {str(e)}"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+                
+        elif file_ext in ['png', 'jpg', 'jpeg']:
+            # Process image file with OCR
+            try:
+                image = Image.open(io.BytesIO(file.read()))
+                
+                # Check if image is too large for processing
+                max_dimension = 4000
+                if image.width > max_dimension or image.height > max_dimension:
+                    # Resize image to reasonable dimensions
+                    resize_ratio = min(max_dimension/image.width, max_dimension/image.height)
+                    new_width = int(image.width * resize_ratio)
+                    new_height = int(image.height * resize_ratio)
+                    image = image.resize((new_width, new_height), Image.LANCZOS)
+                    logger.info(f"Resized image from {image.width}x{image.height} to {new_width}x{new_height}")
+                
+                # Check if Tesseract is installed and configured
+                try:
+                    pytesseract.get_tesseract_version()
+                except Exception as e:
+                    logger.error(f"Tesseract not properly installed or configured: {str(e)}")
+                    return Response({"error": "OCR engine (Tesseract) is not properly installed or configured on the server."}, 
+                                   status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                text = pytesseract.image_to_string(image)
+                
+                if not text.strip():
+                    return Response({"error": "No text could be extracted from the image. The image may not contain readable text or the text may be unclear."}, 
+                                   status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error(f"Image processing error: {str(e)}")
+                return Response({"error": f"Failed to process image file: {str(e)}"}, 
+                               status=status.HTTP_400_BAD_REQUEST)
+            
+        else:
+            return Response(
+                {"error": f"Unsupported file type: {file_ext}. Please upload PDF, DOCX, PPTX, or image files (JPG, PNG)."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Validate the extracted text
+        if not text or not text.strip():
+            return Response({"error": "No text could be extracted from the file. Please try another file."}, 
+                           status=status.HTTP_400_BAD_REQUEST)
+            
+        # Return successful response with extracted text
+        logger.info(f"Successfully extracted {len(text)} characters from {filename}")
+        return Response({
+            "filename": filename,
+            "text": text.strip()
+        })
+        
+    except UnicodeDecodeError:
+        logger.error(f"Unicode decode error while processing {file.name}")
+        return Response({"error": "Unable to decode the file. Please ensure it's a valid text-based file."}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    except MemoryError:
+        logger.error(f"Memory error while processing {file.name}")
+        return Response({"error": "File is too large to process. Please try a smaller file."}, 
+                       status=status.HTTP_400_BAD_REQUEST)
+    except Exception as e:
+        logger.error(f"Unexpected error processing {file.name}: {str(e)}")
+        return Response({"error": f"Error processing file: {str(e)}"}, 
+                       status=status.HTTP_500_INTERNAL_SERVER_ERROR)
