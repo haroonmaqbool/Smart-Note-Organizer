@@ -324,10 +324,7 @@ const NoteEditor: React.FC = () => {
       }
     } catch (error) {
       console.error('Error saving note:', error);
-      
-      setShowSnackbar(true);
-      setSnackbarMessage('Error saving note');
-      setSnackbarSeverity('error');
+      showSnackbarMessage('Error saving note', 'error');
     } finally {
       setIsLoading(false);
     }
