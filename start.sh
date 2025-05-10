@@ -41,14 +41,14 @@ cd backend
 if [ "$IS_WINDOWS" = true ]; then
     # On Windows, start in a new window/terminal
     if command -v powershell &> /dev/null; then
-        powershell -Command "Start-Process python -ArgumentList 'app.py'"
+        powershell -Command "Start-Process python -ArgumentList 'run_django.py'"
     else
-        start cmd /c "venv\Scripts\activate.bat && python app.py"
+        start cmd /c "venv\Scripts\activate.bat && python run_django.py"
     fi
 else
     # On Unix-like systems
     source venv/bin/activate
-    python app.py &
+    python run_django.py &
     BACKEND_PID=$!
 fi
 cd ..
@@ -71,8 +71,8 @@ fi
 cd ..
 
 echo "Smart Note Organizer is running!"
-echo "Frontend available at: http://localhost:5173"
-echo "Backend API available at: http://localhost:5000"
+echo "Frontend available at: http://localhost:5174"
+echo "Backend API available at: http://localhost:8000"
 echo ""
 
 if [ "$IS_WINDOWS" = true ]; then

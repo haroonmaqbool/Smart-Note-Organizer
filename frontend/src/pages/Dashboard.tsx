@@ -21,7 +21,9 @@ import {
   DialogActions,
   CircularProgress,
   Snackbar,
-  Alert
+  Alert,
+  TextField,
+  InputAdornment
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -31,18 +33,25 @@ import {
   ArrowForward as ArrowForwardIcon,
   DateRange as DateRangeIcon,
   Label as LabelIcon,
-  Psychology as PsychologyIcon
+  Psychology as PsychologyIcon,
+  Clear as ClearIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { api, Flashcard as ApiFlashcard } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
+import type { LinkProps } from 'react-router-dom';
+import type { ButtonProps } from '@mui/material';
 
 const Dashboard: React.FC = () => {
   // Get notes from AppContext
   const { state, dispatch } = useApp();
   const { notes } = state;
   const theme = useTheme();
+
+  // Add search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTags, setSearchTags] = useState<string[]>([]);
 
   // State for AI flashcard generation
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
@@ -61,6 +70,35 @@ const Dashboard: React.FC = () => {
   const recentlyUpdated = [...notes].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   ).slice(0, 3);
+
+  // Filter notes based on search query and tags
+  const filteredNotes = notes.filter(note => {
+    const titleMatch = note.title.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    // If we have search tags, check if the note has any of the searched tags
+    const tagMatch = searchTags.length === 0 || 
+      note.tags.some(tag => searchTags.includes(tag));
+    
+    return titleMatch && tagMatch;
+  });
+
+  // Helper to collect all unique tags from notes
+  const allTags = React.useMemo(() => {
+    const tagSet = new Set<string>();
+    notes.forEach(note => {
+      note.tags.forEach(tag => tagSet.add(tag));
+    });
+    return Array.from(tagSet);
+  }, [notes]);
+
+  // Handle tag selection for filtering
+  const handleTagSelect = (tag: string) => {
+    if (searchTags.includes(tag)) {
+      setSearchTags(searchTags.filter(t => t !== tag));
+    } else {
+      setSearchTags([...searchTags, tag]);
+    }
+  };
 
   const StatCard = ({ icon, title, value, color }: { icon: React.ReactNode, title: string, value: string | number, color: string }) => (
     <Card elevation={0} sx={{ p: 2, height: '100%', borderRadius: 2, border: `1px solid ${alpha(color, 0.2)}` }}>
@@ -163,25 +201,50 @@ const Dashboard: React.FC = () => {
           Dashboard
         </Typography>
         
-        <Button 
-          variant="contained" 
-          color="primary" 
-          startIcon={<AddIcon />}
-          component={Link}
-          to="/editor"
-          sx={{
-            px: 3,
-            py: 1.2,
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-            transition: 'all 0.3s ease',
-            '&:hover': {
-              transform: 'translateY(-3px)',
-              boxShadow: `0 8px 20px ${alpha(theme.palette.primary.main, 0.4)}`,
-            }
-          }}
-        >
-          Create Note
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="outlined" 
+            color="error"
+            onClick={() => {
+              if (window.confirm('Are you sure you want to clear all notes? This cannot be undone.')) {
+                dispatch({ type: 'CLEAR_NOTES' });
+                setSearchQuery('');
+                setSearchTags([]);
+                setNotification({
+                  open: true,
+                  message: 'All notes have been cleared',
+                  severity: 'info'
+                });
+              }
+            }}
+            sx={{
+              px: 2,
+              py: 1.2,
+            }}
+          >
+            Clear Dashboard
+          </Button>
+          
+          <Button 
+            variant="contained" 
+            color="primary" 
+            startIcon={<AddIcon />}
+            component={Link}
+            to="/editor"
+            sx={{
+              px: 3,
+              py: 1.2,
+              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+              transition: 'all 0.3s ease',
+              '&:hover': {
+                transform: 'translateY(-3px)',
+                boxShadow: `0 8px 20px ${alpha(theme.palette.primary.main, 0.4)}`,
+              }
+            }}
+          >
+            Create Note
+          </Button>
+        </Box>
       </Box>
 
       {/* Stats Section */}
@@ -225,6 +288,73 @@ const Dashboard: React.FC = () => {
             />
           </Grid>
         </Grid>
+      </Paper>
+
+      {/* Search Section */}
+      <Paper 
+        elevation={0} 
+        sx={{ 
+          p: 3, 
+          mb: 4,
+          borderRadius: 2, 
+          border: `1px solid ${theme.palette.divider}`
+        }}
+      >
+        <Box sx={{ mb: 2 }}>
+          <TextField
+            fullWidth
+            placeholder="Search notes by title..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton onClick={() => setSearchQuery('')} edge="end" size="small">
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              }
+            }}
+          />
+        </Box>
+        
+        {/* Tags for filtering */}
+        <Box sx={{ mt: 2 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Filter by tags:
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {allTags.map(tag => (
+              <Chip 
+                key={tag}
+                label={tag}
+                size="small"
+                color={searchTags.includes(tag) ? "primary" : "default"}
+                onClick={() => handleTagSelect(tag)}
+                clickable
+              />
+            ))}
+            {searchTags.length > 0 && (
+              <Chip 
+                label="Clear Filters"
+                size="small"
+                variant="outlined"
+                onClick={() => setSearchTags([])}
+                clickable
+              />
+            )}
+          </Box>
+        </Box>
       </Paper>
 
       {/* Main Content Grid */}
@@ -271,140 +401,88 @@ const Dashboard: React.FC = () => {
             
             <Divider sx={{ mb: 3 }} />
             
-            {totalNotes === 0 ? (
+            {filteredNotes.length === 0 ? (
               <Box sx={{ 
-                textAlign: 'center', 
-                py: 6, 
-                backgroundColor: alpha(theme.palette.primary.main, 0.03),
-                borderRadius: 2
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                py: 6
               }}>
-                <NoteIcon sx={{ fontSize: 50, color: alpha(theme.palette.primary.main, 0.3), mb: 2 }} />
-                <Typography variant="h6" color="text.secondary" sx={{ mb: 2 }}>
-                  You don't have any notes yet
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                  {notes.length === 0 
+                    ? "You haven't created any notes yet."
+                    : "No notes match your search criteria."}
                 </Typography>
-                <Button
-                  variant="contained"
-                  color="primary"
-                  startIcon={<AddIcon />}
-                  component={Link}
-                  to="/editor"
-                >
-                  Create Your First Note
-                </Button>
+                {notes.length === 0 && (
+                  <Button 
+                    variant="contained" 
+                    component={Link} 
+                    to="/editor"
+                    startIcon={<AddIcon />}
+                  >
+                    Create Your First Note
+                  </Button>
+                )}
               </Box>
             ) : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {recentlyUpdated.map((note) => (
-                  <Card 
-                    key={note.id}
-                    sx={{ 
+              <Grid container spacing={3}>
+                {filteredNotes.map((note) => (
+                  <Grid item xs={12} key={note.id}>
+                    <Card sx={{ 
                       borderRadius: 2,
                       transition: 'all 0.3s ease',
                       '&:hover': {
-                        transform: 'translateY(-3px)',
-                        boxShadow: '0 8px 16px rgba(0, 0, 0, 0.1)'
+                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                        transform: 'translateY(-3px)'
                       }
-                    }}
-                  >
-                    <CardContent sx={{ p: 3 }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                        <Box>
-                          <Typography 
-                            variant="h6" 
-                            sx={{ 
-                              fontWeight: 600,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              display: '-webkit-box',
-                              WebkitLineClamp: 1,
-                              WebkitBoxOrient: 'vertical',
-                            }}
-                          >
-                            {note.title}
-                          </Typography>
-                          <Typography 
-                            variant="caption" 
-                            color="text.secondary" 
-                            sx={{ display: 'block', mt: 0.5 }}
-                          >
-                            Last edited: {new Date(note.updatedAt).toLocaleDateString()}
-                          </Typography>
+                    }}>
+                      <CardContent>
+                        <Typography variant="h6" component="h2" gutterBottom>
+                          {note.title}
+                        </Typography>
+                        
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {note.summary || "No summary available"}
+                        </Typography>
+                        
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                          {note.tags.map((tag) => (
+                            <Chip 
+                              key={tag} 
+                              label={tag} 
+                              size="small" 
+                              variant="outlined"
+                              onClick={() => handleTagSelect(tag)}
+                            />
+                          ))}
                         </Box>
                         
-                        <Box>
-                          <Button 
-                            variant="outlined"
-                            size="small" 
-                            startIcon={<NoteIcon />} 
-                            component={Link}
-                            to={`/editor?id=${note.id}`}
-                            sx={{ 
-                              mr: 1,
-                              fontWeight: 500,
-                              '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) }
-                            }}
-                          >
-                            Open
-                          </Button>
-                          <Button 
-                            variant="outlined"
-                            size="small" 
-                            color="secondary"
-                            startIcon={<PsychologyIcon />} 
-                            onClick={() => handleGenerateAIFlashcards(note)}
-                            sx={{ 
-                              fontWeight: 500,
-                              '&:hover': { backgroundColor: alpha(theme.palette.secondary.main, 0.05) }
-                            }}
-                          >
-                            Create Flashcards
-                          </Button>
-                        </Box>
-                      </Box>
-                      
-                      <Box sx={{ mb: 2 }}>
-                        {note.tags.map((tag) => (
-                          <Chip 
-                            key={tag} 
-                            label={tag} 
-                            size="small" 
-                            color="primary" 
-                            variant="outlined" 
-                            sx={{ mr: 0.5, mb: 0.5 }}
-                          />
-                        ))}
-                      </Box>
-                      
-                      <Typography 
-                        variant="body2" 
-                        color="text.secondary"
-                        sx={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}
-                      >
-                        {note.content.substring(0, 200)}...
-                      </Typography>
-                    </CardContent>
-                  </Card>
+                        <Typography variant="caption" color="text.secondary">
+                          Last updated: {new Date(note.updatedAt).toLocaleDateString()}
+                        </Typography>
+                      </CardContent>
+                      <CardActions>
+                        <Button 
+                          size="small" 
+                          component={Link} 
+                          to={`/editor?id=${note.id}`}
+                          sx={{ mr: 1 }}
+                        >
+                          Edit
+                        </Button>
+                        <Button 
+                          size="small" 
+                          onClick={() => handleGenerateAIFlashcards(note)}
+                          color="secondary"
+                        >
+                          Generate Flashcards
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
                 ))}
-                
-                {notes.length > 3 && (
-                  <Box sx={{ textAlign: 'center', mt: 2 }}>
-                    <Button 
-                      variant="outlined" 
-                      component={Link} 
-                      to="/search"
-                      endIcon={<ArrowForwardIcon />}
-                    >
-                      View All Notes ({notes.length})
-                    </Button>
-                  </Box>
-                )}
-              </Box>
+              </Grid>
             )}
           </Paper>
         </Grid>

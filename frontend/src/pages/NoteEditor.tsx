@@ -70,7 +70,7 @@ const NoteEditor: React.FC = () => {
   const [snackbarSeverity, setSnackbarSeverity] = useState<'success' | 'error' | 'info' | 'warning'>('success');
   const [isLoading, setIsLoading] = useState(false);
   const [isTaggingLoading, setIsTaggingLoading] = useState(false);
-  const [aiModel, setAiModel] = useState<AIModel>('bart');
+  const [aiModel, setAiModel] = useState<AIModel>('llama');
   const [availableModel, setAvailableModel] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
   const [redirectAfterSave, setRedirectAfterSave] = useState(false);
@@ -507,10 +507,8 @@ const NoteEditor: React.FC = () => {
                     label="AI Model"
                     onChange={(e) => setAiModel(e.target.value as AIModel)}
                   >
-                    <MenuItem value="bart">BART</MenuItem>
-                    {availableModel === 'llama' && (
-                      <MenuItem value="llama">Llama</MenuItem>
-                    )}
+                    <MenuItem value="llama">Meta Llama 3</MenuItem>
+                    <MenuItem value="rule-based">Rule-based</MenuItem>
                   </Select>
                 </FormControl>
               </Tooltip>

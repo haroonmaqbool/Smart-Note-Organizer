@@ -21,7 +21,12 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  CircularProgress
+  CircularProgress,
+  TextField,
+  Input,
+  InputLabel,
+  FormControl,
+  Tooltip
 } from '@mui/material';
 import {
   NavigateNext as NextIcon,
@@ -30,12 +35,18 @@ import {
   Psychology as PsychologyIcon,
   History as HistoryIcon,
   School as SchoolIcon,
-  Add as AddIcon
+  Add as AddIcon,
+  Upload as UploadIcon,
+  Image as ImageIcon,
+  Save as SaveIcon,
+  Cancel as CancelIcon,
+  Delete as DeleteIcon
 } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 import { api, AIModel, Flashcard as ApiFlashcard } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
+import { createWorker } from 'tesseract.js';
 
 interface Flashcard {
   id: string;
@@ -60,10 +71,41 @@ const Flashcards: React.FC = () => {
   const [selectedFlashcard, setSelectedFlashcard] = useState<Flashcard | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFlashcards, setGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
+  const [imageDialogOpen, setImageDialogOpen] = useState(false);
+  const [isProcessingImage, setIsProcessingImage] = useState(false);
+  const [extractedText, setExtractedText] = useState('');
+  const [imageGeneratedFlashcards, setImageGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
+  const [imageTags, setImageTags] = useState<string[]>([]);
+  const [imageTitle, setImageTitle] = useState('');
+  const [availableModel, setAvailableModel] = useState<AIModel>('llama');
+  const [openCreateForm, setOpenCreateForm] = useState(false);
+  const [newFlashcard, setNewFlashcard] = useState({
+    front: '',
+    back: '',
+    tags: [] as string[],
+  });
+  const [currentNewTag, setCurrentNewTag] = useState('');
+  const [textDialogOpen, setTextDialogOpen] = useState(false);
+  const [userInputText, setUserInputText] = useState('');
+  const [isProcessingText, setIsProcessingText] = useState(false);
+  const [textGeneratedFlashcards, setTextGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
+  const [textTitle, setTextTitle] = useState('');
   
   // Get flashcards from context
   const { state, dispatch } = useApp();
   const { flashcards } = state;
+
+  useEffect(() => {
+    // Check which AI models are available
+    const checkAvailableModels = async () => {
+      const health = await api.healthCheck();
+      if (health && health.ai_model) {
+        setAvailableModel(health.ai_model as AIModel);
+      }
+    };
+    
+    checkAvailableModels();
+  }, []);
 
   const handleNext = () => {
     if (currentIndex < flashcards.length - 1) {
@@ -179,6 +221,289 @@ const Flashcards: React.FC = () => {
       severity: 'success'
     });
     setAiDialogOpen(false);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Check if file is an image
+    if (!file.type.match('image.*')) {
+      setNotification({
+        open: true,
+        message: 'Please select an image file (jpg, png, etc.)',
+        severity: 'error'
+      });
+      return;
+    }
+    
+    try {
+      setIsProcessingImage(true);
+      setImageDialogOpen(true);
+      setExtractedText('');
+      setImageGeneratedFlashcards([]);
+      
+      // First try to use the backend OCR (which uses Tesseract)
+      const response = await api.extractTextFromImage(file);
+      
+      if (response.error) {
+        throw new Error(response.error);
+      }
+      
+      // If backend OCR succeeded, use the extracted text
+      if (response.data?.text) {
+        setExtractedText(response.data.text);
+        
+        // Automatically generate flashcards from the extracted text
+        await generateFlashcardsFromOCRText(response.data.text);
+      } else {
+        // If backend failed, try client-side OCR with Tesseract.js
+        await processImageWithTesseract(file);
+      }
+    } catch (error) {
+      console.error('Error processing image:', error);
+      setNotification({
+        open: true,
+        message: `Error processing image: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
+  const processImageWithTesseract = async (file: File) => {
+    try {
+      setNotification({
+        open: true,
+        message: 'Processing image with OCR (this may take a moment)...',
+        severity: 'info'
+      });
+      
+      // Create a worker with 'eng' language directly in v5
+      const worker = await createWorker('eng');
+      
+      // Create URL for the image file
+      const imageURL = URL.createObjectURL(file);
+      
+      // Recognize text in the image
+      const { data } = await worker.recognize(imageURL);
+      
+      if (data.text && data.text.length > 20) {
+        setExtractedText(data.text);
+        
+        // Automatically generate flashcards from the extracted text
+        await generateFlashcardsFromOCRText(data.text);
+      } else {
+        setNotification({
+          open: true,
+          message: 'Could not extract sufficient text from the image. Try a clearer image.',
+          severity: 'warning'
+        });
+      }
+      
+      // Clean up
+      await worker.terminate();
+      URL.revokeObjectURL(imageURL);
+    } catch (error) {
+      console.error('Tesseract OCR error:', error);
+      throw new Error('Client-side OCR failed. Try a different image or improve image quality.');
+    }
+  };
+
+  const generateFlashcardsFromOCRText = async (text: string) => {
+    try {
+      setIsProcessingImage(true);
+      
+      // Use the title if provided, otherwise create a default title
+      const titleToUse = imageTitle || 'Image OCR Flashcards';
+      
+      // Call API to generate flashcards
+      const result = await api.generateFlashcardsFromText(text, titleToUse, availableModel as AIModel);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      if (result.data?.flashcards && result.data.flashcards.length > 0) {
+        setImageGeneratedFlashcards(result.data.flashcards);
+        
+        // Extract potential tags from the title
+        if (titleToUse) {
+          const titleWords = titleToUse.split(' ');
+          if (titleWords.length > 0) {
+            setImageTags([titleToUse]);
+          }
+        }
+        
+        setNotification({
+          open: true,
+          message: `Generated ${result.data.flashcards.length} flashcards from image!`,
+          severity: 'success'
+        });
+      } else {
+        setNotification({
+          open: true,
+          message: 'Could not generate flashcards from the extracted text.',
+          severity: 'warning'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating flashcards:', error);
+      setNotification({
+        open: true,
+        message: `Error generating flashcards: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessingImage(false);
+    }
+  };
+
+  const saveImageFlashcards = () => {
+    if (imageGeneratedFlashcards.length === 0) {
+      return;
+    }
+    
+    // Convert the API flashcard format to the app's flashcard format
+    const flashcardsToSave = imageGeneratedFlashcards.map(card => ({
+      id: uuidv4(),
+      front: card.question,
+      back: card.answer,
+      tags: [...imageTags, ...card.tags],
+      createdAt: new Date()
+    }));
+    
+    // Dispatch action to add flashcards to global state
+    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
+    
+    // Show success message and close dialog
+    setNotification({
+      open: true,
+      message: `${flashcardsToSave.length} flashcards saved successfully!`,
+      severity: 'success'
+    });
+    setImageDialogOpen(false);
+    
+    // Reset states
+    setExtractedText('');
+    setImageGeneratedFlashcards([]);
+    setImageTitle('');
+    setImageTags([]);
+  };
+
+  const handleCreateFlashcard = () => {
+    if (!newFlashcard.front || !newFlashcard.back) {
+      setNotification({
+        open: true,
+        message: 'Please provide both front and back content for the flashcard',
+        severity: 'warning'
+      });
+      return;
+    }
+    
+    const flashcard = {
+      id: uuidv4(),
+      front: newFlashcard.front,
+      back: newFlashcard.back,
+      tags: newFlashcard.tags,
+      createdAt: new Date()
+    };
+    
+    dispatch({ type: 'ADD_FLASHCARD', payload: flashcard });
+    
+    setNotification({
+      open: true,
+      message: 'Flashcard created successfully!',
+      severity: 'success'
+    });
+    
+    // Reset form
+    setNewFlashcard({
+      front: '',
+      back: '',
+      tags: [],
+    });
+    setCurrentNewTag('');
+    setOpenCreateForm(false);
+  };
+
+  const handleTextToFlashcards = async () => {
+    if (!userInputText || userInputText.trim().length < 50) {
+      setNotification({
+        open: true,
+        message: 'Please enter more text to generate meaningful flashcards',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    try {
+      setIsProcessingText(true);
+      
+      // Call API to generate flashcards from text
+      const result = await api.generateFlashcardsFromText(userInputText, textTitle, availableModel as AIModel);
+      
+      if (result.error) {
+        throw new Error(result.error);
+      }
+      
+      if (result.data?.flashcards && result.data.flashcards.length > 0) {
+        setTextGeneratedFlashcards(result.data.flashcards);
+        
+        setNotification({
+          open: true,
+          message: `Generated ${result.data.flashcards.length} flashcards!`,
+          severity: 'success'
+        });
+      } else {
+        setNotification({
+          open: true,
+          message: 'Could not generate flashcards from the provided text.',
+          severity: 'warning'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating flashcards:', error);
+      setNotification({
+        open: true,
+        message: `Error generating flashcards: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        severity: 'error'
+      });
+    } finally {
+      setIsProcessingText(false);
+    }
+  };
+
+  const saveTextFlashcards = () => {
+    if (textGeneratedFlashcards.length === 0) {
+      return;
+    }
+    
+    // Convert the API flashcard format to the app's flashcard format
+    const flashcardsToSave = textGeneratedFlashcards.map(card => ({
+      id: uuidv4(),
+      front: card.question,
+      back: card.answer,
+      tags: textTitle ? [textTitle] : [],
+      createdAt: new Date()
+    }));
+    
+    // Dispatch action to add flashcards to global state
+    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
+    
+    // Show success message and close dialog
+    setNotification({
+      open: true,
+      message: `${flashcardsToSave.length} flashcards saved successfully!`,
+      severity: 'success'
+    });
+    setTextDialogOpen(false);
+    
+    // Reset states
+    setUserInputText('');
+    setTextGeneratedFlashcards([]);
+    setTextTitle('');
   };
 
   const renderStudyMode = () => (
@@ -367,24 +692,44 @@ const Flashcards: React.FC = () => {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">Flashcards</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" component="h1" gutterBottom>
+          My Flashcards
+        </Typography>
         <Box>
           <Button
-            variant="outlined"
+            variant="contained"
+            color="primary"
             startIcon={<AddIcon />}
-            onClick={navigateToCreateNote}
-            sx={{ mr: 2 }}
+            onClick={() => setOpenCreateForm(true)}
           >
-            Create Note
+            Create Flashcard
           </Button>
+          
           <Button
-            variant="outlined"
-            startIcon={<DownloadIcon />}
-            onClick={handleExport}
-            disabled={flashcards.length === 0}
+            variant="contained"
+            color="secondary"
+            startIcon={<ImageIcon />}
+            component="label"
+            sx={{ ml: 2 }}
           >
-            Export to Anki
+            Image to Flashcards
+            <input
+              type="file"
+              hidden
+              accept="image/*"
+              onChange={handleImageUpload}
+            />
+          </Button>
+          
+          <Button
+            variant="contained"
+            color="info"
+            startIcon={<PsychologyIcon />}
+            onClick={() => setTextDialogOpen(true)}
+            sx={{ ml: 2 }}
+          >
+            Text to Flashcards
           </Button>
         </Box>
       </Box>
@@ -486,9 +831,340 @@ const Flashcards: React.FC = () => {
         </DialogActions>
       </Dialog>
       
+      {/* Image OCR Dialog */}
+      <Dialog
+        open={imageDialogOpen}
+        onClose={() => !isProcessingImage && setImageDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          Image to Flashcards
+          {isProcessingImage && <CircularProgress size={24} sx={{ ml: 2 }} />}
+        </DialogTitle>
+        <DialogContent dividers>
+          {isProcessingImage ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography>Processing image and generating flashcards...</Typography>
+            </Box>
+          ) : (
+            <Box>
+              {extractedText && (
+                <>
+                  <Box sx={{ mb: 3 }}>
+                    <TextField
+                      label="Flashcard Set Title"
+                      fullWidth
+                      value={imageTitle}
+                      onChange={(e) => setImageTitle(e.target.value)}
+                      sx={{ mb: 2 }}
+                    />
+                    
+                    <Typography variant="subtitle1" gutterBottom>
+                      Extracted Text:
+                    </Typography>
+                    <Paper 
+                      elevation={0} 
+                      sx={{ 
+                        p: 2, 
+                        maxHeight: '150px', 
+                        overflow: 'auto',
+                        bgcolor: alpha(theme.palette.primary.main, 0.05),
+                        border: `1px solid ${theme.palette.divider}`,
+                        borderRadius: 1,
+                        mb: 2
+                      }}
+                    >
+                      <Typography variant="body2">{extractedText}</Typography>
+                    </Paper>
+                  </Box>
+                  
+                  <Typography variant="h6" gutterBottom>
+                    Generated Flashcards:
+                  </Typography>
+                  
+                  {imageGeneratedFlashcards.length > 0 ? (
+                    <Box>
+                      {imageGeneratedFlashcards.map((card, index) => (
+                        <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.secondary.main, 0.05) }}>
+                          <CardContent>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                              Front: {card.question}
+                            </Typography>
+                            <Divider sx={{ my: 1 }} />
+                            <Typography variant="body1">
+                              Back: {card.answer}
+                            </Typography>
+                            <Box sx={{ mt: 1 }}>
+                              {imageTags.map((tag, tagIndex) => (
+                                <Chip 
+                                  key={`title-${tagIndex}`} 
+                                  label={tag} 
+                                  size="small" 
+                                  variant="outlined"
+                                  sx={{ mr: 0.5, mt: 0.5 }}
+                                />
+                              ))}
+                              {card.tags.map((tag, tagIndex) => (
+                                <Chip 
+                                  key={`card-${tagIndex}`} 
+                                  label={tag} 
+                                  size="small" 
+                                  variant="outlined"
+                                  sx={{ mr: 0.5, mt: 0.5 }}
+                                />
+                              ))}
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No flashcards could be generated. Try with a different image or manually enter flashcards.
+                    </Typography>
+                  )}
+                </>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setImageDialogOpen(false)} 
+            color="inherit"
+            disabled={isProcessingImage}
+            startIcon={<CancelIcon />}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={saveImageFlashcards} 
+            color="primary"
+            variant="contained"
+            disabled={isProcessingImage || imageGeneratedFlashcards.length === 0}
+            startIcon={<SaveIcon />}
+          >
+            Save Flashcards
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Flashcard Creation Dialog */}
+      <Dialog
+        open={openCreateForm}
+        onClose={() => setOpenCreateForm(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>Create New Flashcard</DialogTitle>
+        <DialogContent dividers>
+          <Box sx={{ mb: 3 }}>
+            <TextField
+              label="Front (Question)"
+              fullWidth
+              multiline
+              rows={3}
+              value={newFlashcard.front}
+              onChange={(e) => setNewFlashcard({...newFlashcard, front: e.target.value})}
+              sx={{ mb: 2 }}
+            />
+            
+            <TextField
+              label="Back (Answer)"
+              fullWidth
+              multiline
+              rows={3}
+              value={newFlashcard.back}
+              onChange={(e) => setNewFlashcard({...newFlashcard, back: e.target.value})}
+              sx={{ mb: 2 }}
+            />
+            
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle1" gutterBottom>
+                Tags
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {newFlashcard.tags.map((tag, index) => (
+                  <Chip 
+                    key={index} 
+                    label={tag} 
+                    onDelete={() => {
+                      setNewFlashcard({
+                        ...newFlashcard, 
+                        tags: newFlashcard.tags.filter((_, i) => i !== index)
+                      });
+                    }}
+                    color="primary" 
+                    variant="outlined"
+                  />
+                ))}
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <TextField
+                  label="Add Tag"
+                  size="small"
+                  value={currentNewTag}
+                  onChange={(e) => setCurrentNewTag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && currentNewTag.trim()) {
+                      setNewFlashcard({
+                        ...newFlashcard,
+                        tags: [...newFlashcard.tags, currentNewTag.trim()]
+                      });
+                      setCurrentNewTag('');
+                      e.preventDefault();
+                    }
+                  }}
+                  sx={{ mr: 1 }}
+                />
+                <Button 
+                  variant="outlined" 
+                  onClick={() => {
+                    if (currentNewTag.trim()) {
+                      setNewFlashcard({
+                        ...newFlashcard,
+                        tags: [...newFlashcard.tags, currentNewTag.trim()]
+                      });
+                      setCurrentNewTag('');
+                    }
+                  }}
+                  disabled={!currentNewTag.trim()}
+                >
+                  Add
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenCreateForm(false)} color="inherit">
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleCreateFlashcard} 
+            color="primary"
+            variant="contained"
+            disabled={!newFlashcard.front || !newFlashcard.back}
+          >
+            Create Flashcard
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Text to Flashcards Dialog */}
+      <Dialog
+        open={textDialogOpen}
+        onClose={() => !isProcessingText && setTextDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          Text to Flashcards with Llama 3
+          {isProcessingText && <CircularProgress size={24} sx={{ ml: 2 }} />}
+        </DialogTitle>
+        <DialogContent dividers>
+          {textGeneratedFlashcards.length === 0 ? (
+            <Box sx={{ mb: 3 }}>
+              <TextField
+                label="Title (Optional)"
+                fullWidth
+                value={textTitle}
+                onChange={(e) => setTextTitle(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+              
+              <TextField
+                label="Paste your text here"
+                fullWidth
+                multiline
+                rows={10}
+                value={userInputText}
+                onChange={(e) => setUserInputText(e.target.value)}
+                placeholder="Enter a long paragraph or multiple paragraphs of text to generate flashcards..."
+                sx={{ mb: 2 }}
+              />
+              
+              <Button
+                variant="contained" 
+                color="primary"
+                onClick={handleTextToFlashcards}
+                disabled={isProcessingText || userInputText.trim().length < 50}
+                sx={{ mt: 1 }}
+              >
+                {isProcessingText ? (
+                  <>
+                    <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
+                    Processing...
+                  </>
+                ) : (
+                  'Generate Flashcards with Llama 3'
+                )}
+              </Button>
+            </Box>
+          ) : (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6">
+                  Generated Flashcards:
+                </Typography>
+                <Button 
+                  variant="outlined"
+                  onClick={() => {
+                    setTextGeneratedFlashcards([]);
+                    setIsProcessingText(false);
+                  }}
+                >
+                  Back to Editor
+                </Button>
+              </Box>
+              
+              {textGeneratedFlashcards.map((card, index) => (
+                <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
+                  <CardContent>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                      Front: {card.question}
+                    </Typography>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="body1">
+                      Back: {card.answer}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              ))}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => {
+              setTextDialogOpen(false);
+              setUserInputText('');
+              setTextGeneratedFlashcards([]);
+              setTextTitle('');
+            }} 
+            color="inherit"
+            disabled={isProcessingText}
+          >
+            Cancel
+          </Button>
+          {textGeneratedFlashcards.length > 0 && (
+            <Button 
+              onClick={saveTextFlashcards} 
+              color="primary"
+              variant="contained"
+              disabled={isProcessingText}
+            >
+              Save All Flashcards
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+      
       <Snackbar 
         open={notification.open} 
-        autoHideDuration={4000}
+        autoHideDuration={6000}
         onClose={handleCloseNotification}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >

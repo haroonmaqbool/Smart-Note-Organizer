@@ -7,12 +7,12 @@
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 // Set the base API URL
-let API_BASE_URL = '/api';
+export let API_BASE_URL = '/api';
 
 // In production, we need to specify the full backend URL
 if (!isDevelopment) {
   // Use the same protocol and hostname, but backend port
-  API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000/api`;
+  API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000/api`;
 }
 
 // Debug information to help troubleshoot connection issues
@@ -48,13 +48,19 @@ export interface SearchResultItem {
 }
 
 // AI model options
-export type AIModel = 'bart' | 'llama';
+export type AIModel = 'llama' | 'rule-based';
 
 // Flashcard interface
 export interface Flashcard {
   question: string;
   answer: string;
   tags: string[];
+}
+
+// OCR extracted flashcard interface
+export interface ExtractedFlashcard {
+  term: string;
+  definition: string;
 }
 
 // Chatbot response interface
@@ -187,10 +193,10 @@ export const api = {
   },
   
   // Health check endpoint to verify API is running
-  async healthCheck(): Promise<{ status: string, ai_model: string } | false> {
+  async healthCheck(): Promise<{ status: string, ai_model?: string, message?: string } | false> {
     try {
-      console.log('Checking health at:', `${API_BASE_URL}/health`);
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      console.log('Checking health at:', `${API_BASE_URL}/health/`);
+      const response = await fetch(`${API_BASE_URL}/health/`, {
         method: 'GET',
       });
       
@@ -201,6 +207,64 @@ export const api = {
     } catch (error) {
       console.error('Health check API error:', error);
       return false;
+    }
+  },
+
+  // OCR function to extract text from images
+  async extractTextFromImage(imageFile: File): Promise<ApiResponse<{ text: string }>> {
+    try {
+      console.log('Extracting text from image:', imageFile.name);
+      
+      // For images, use the uploadFile endpoint but specify it's for OCR
+      const formData = new FormData();
+      formData.append('file', imageFile);
+      formData.append('ocr', 'true');
+
+      const response = await fetch(`${API_BASE_URL}/upload/`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to extract text: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      console.error('OCR extraction error:', error);
+      return { error: handleApiError(error, 'Failed to extract text from image') };
+    }
+  },
+
+  // Generate flashcards from extracted text using the AI model
+  async generateFlashcardsFromText(text: string, title?: string, aiModel?: AIModel): 
+    Promise<ApiResponse<{ flashcards: Flashcard[] }>> {
+    try {
+      console.log('Generating flashcards from extracted text');
+      const response = await fetch(`${API_BASE_URL}/generate-flashcards/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          text, 
+          title,
+          ai_model: aiModel 
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to generate flashcards: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { data };
+    } catch (error) {
+      console.error('Flashcard generation error:', error);
+      return { error: handleApiError(error, 'Failed to generate flashcards from text') };
     }
   }
 }; 

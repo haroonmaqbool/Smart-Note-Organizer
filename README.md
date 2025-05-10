@@ -71,14 +71,14 @@ npm run dev
 
 ### Accessing the Application
 
-- Frontend: http://localhost:5173
+- Frontend: http://localhost:5174
 - Backend API: http://localhost:5000
 
 ## Architecture
 
 - **Frontend**: React with TypeScript, Material UI, and Vite
-- **Backend**: Node.js with Express
-- **AI Features**: Natural language processing using Transformers.js
+- **Backend**: Python with Flask and AI libraries
+- **AI Features**: Natural language processing using Transformers, spaCy, and PyTorch
 
 ## API Endpoints
 
@@ -110,8 +110,8 @@ If you see errors related to command syntax (`&&` not working):
 If you see a warning about ports already being in use:
 
 1. Find the process using the port:
-   - Windows: `netstat -ano | findstr :5000` or `netstat -ano | findstr :5173`
-   - Linux/macOS: `lsof -i :5000` or `lsof -i :5173`
+   - Windows: `netstat -ano | findstr :5000` or `netstat -ano | findstr :5174`
+   - Linux/macOS: `lsof -i :5000` or `lsof -i :5174`
 
 2. Stop the process:
    - Windows: `taskkill /PID <PID> /F`

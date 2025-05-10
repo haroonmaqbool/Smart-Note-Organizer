@@ -1,14 +1,14 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline, Alert, Snackbar, responsiveFontSizes } from '@mui/material';
 import { createTheme } from '@mui/material/styles';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import NoteEditor from './pages/NoteEditor';
 import Search from './pages/Search';
 import Flashcards from './pages/Flashcards';
-import { AppProvider } from './context/AppContext';
-import { api } from './services/api';
+import { AppProvider, useApp } from './context/AppContext';
+import { api, API_BASE_URL } from './services/api';
 
 const baseTheme = createTheme({
   palette: {
@@ -372,63 +372,123 @@ const baseTheme = createTheme({
 // Apply responsive font sizes
 const theme = responsiveFontSizes(baseTheme);
 
-function App() {
-  const [backendConnected, setBackendConnected] = useState(true);
-
-  useEffect(() => {
-    // Check if backend API is available
-    const checkBackendConnection = async () => {
-      try {
-        const isConnected = await api.healthCheck();
-        setBackendConnected(!!isConnected);
+// Separate component to handle data loading
+const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [backendReady, setBackendReady] = useState<boolean>(false);
+  const { dispatch } = useApp();
+  
+  // Function to fetch notes and flashcards from backend
+  const fetchNotesAndFlashcards = useCallback(async () => {
+    try {
+      // Fetch notes
+      const notesResponse = await fetch(`${API_BASE_URL}/notes/`);
+      if (notesResponse.ok) {
+        const notesData = await notesResponse.json();
+        // Transform data to match frontend format and dispatch to context
+        const notes = notesData.map((note: any) => ({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          summary: note.summary,
+          tags: note.tags,
+          createdAt: new Date(note.created_at),
+          updatedAt: new Date(note.updated_at)
+        }));
         
-        if (!isConnected) {
-          console.error('Backend API is not available. Some features may not work.');
+        dispatch({ type: 'SET_NOTES', payload: notes });
+        console.log('Notes loaded:', notes.length);
+      }
+      
+      // Fetch flashcards
+      const flashcardsResponse = await fetch(`${API_BASE_URL}/flashcards/`);
+      if (flashcardsResponse.ok) {
+        const flashcardsData = await flashcardsResponse.json();
+        // Transform data to match frontend format and dispatch to context
+        const flashcards = flashcardsData.map((card: any) => ({
+          id: card.id,
+          front: card.question,
+          back: card.answer,
+          tags: card.tags,
+          createdAt: new Date(card.created_at)
+        }));
+        
+        dispatch({ type: 'SET_FLASHCARDS', payload: flashcards });
+        console.log('Flashcards loaded:', flashcards.length);
+      }
+    } catch (error) {
+      console.error('Error fetching data from backend:', error);
+    }
+  }, [dispatch]);
+  
+  useEffect(() => {
+    // Check backend health on startup
+    const checkBackendHealth = async () => {
+      try {
+        const response = await api.healthCheck();
+        if (response && response.status === 'healthy') {
+          console.log('Backend is ready:', response);
+          setBackendReady(true);
+          
+          // Fetch notes and flashcards after confirming backend is available
+          fetchNotesAndFlashcards();
+        } else {
+          console.error('Backend health check failed:', response);
+          setBackendReady(false);
         }
       } catch (error) {
-        console.error('Error checking backend connection:', error);
-        setBackendConnected(false);
+        console.error('Failed to check backend health:', error);
+        setBackendReady(false);
       }
     };
+    
+    checkBackendHealth();
+    // Recheck every 30 seconds in case backend restarts
+    const interval = setInterval(checkBackendHealth, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotesAndFlashcards]);
 
-    checkBackendConnection();
-  }, []);
+  return (
+    <>
+      {children}
+      {!backendReady && (
+        <div style={{ 
+          position: 'fixed', 
+          top: 0, 
+          left: 0, 
+          right: 0,
+          padding: '8px',
+          background: '#f44336',
+          color: 'white',
+          textAlign: 'center',
+          zIndex: 9999
+        }}>
+          Cannot connect to backend services. Some features might not work properly.
+        </div>
+      )}
+    </>
+  );
+};
 
+const App = () => {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AppProvider>
-        <Router>
-          <Layout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/editor" element={<NoteEditor />} />
-              <Route path="/search" element={<Search />} />
-              <Route path="/flashcards" element={<Flashcards />} />
-            </Routes>
-          </Layout>
-        </Router>
+        <DataLoader>
+          <Router>
+            <Layout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/editor" element={<NoteEditor />} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/flashcards" element={<Flashcards />} />
+              </Routes>
+            </Layout>
+          </Router>
+        </DataLoader>
       </AppProvider>
-      
-      <Snackbar 
-        open={!backendConnected} 
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        sx={{ bottom: { xs: 90, sm: 16 } }}
-      >
-        <Alert 
-          severity="warning" 
-          sx={{ 
-            width: '100%',
-            borderRadius: 2,
-            boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-            border: '1px solid rgba(245, 158, 11, 0.3)'
-          }}
-        >
-          Cannot connect to backend services. Some features might not work properly.
-        </Alert>
-      </Snackbar>
     </ThemeProvider>
   );
-}
+};
 
 export default App; 

@@ -95,7 +95,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Initialize editor with initial content
   useEffect(() => {
     if (editorRef.current) {
-      editorRef.current.innerHTML = initialContent;
+      // Create a temporary div to sanitize the HTML
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = initialContent;
+      
+      // Clear existing content
+      editorRef.current.innerHTML = '';
+      
+      // Append sanitized content
+      while (tempDiv.firstChild) {
+        editorRef.current.appendChild(tempDiv.firstChild);
+      }
+      
       setEditorContent(initialContent);
     }
   }, [initialContent]);
@@ -889,6 +900,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         onKeyDown={handleKeyDown}
         onBlur={handleContentChange}
         sx={{
+          direction: 'ltr',
           p: 2,
           minHeight: minHeight,
           outline: 'none',

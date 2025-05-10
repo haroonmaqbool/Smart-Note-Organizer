@@ -13,8 +13,8 @@ function Test-PortInUse {
 }
 
 # Check if ports are already in use
-$backendPort = 5000
-$frontendPort = 5173
+$backendPort = 8000
+$frontendPort = 5174
 
 if (Test-PortInUse -Port $backendPort) {
     Write-Host "Warning: Port $backendPort is already in use. Backend may not start correctly." -ForegroundColor Yellow
@@ -26,16 +26,16 @@ if (Test-PortInUse -Port $frontendPort) {
 
 # Start backend in a new window
 Write-Host "`nStarting backend service..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location -Path './backend'; npm run dev"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location -Path './backend'; python run_django.py"
 
 # Wait a moment to let backend initialize
 Start-Sleep -Seconds 2
 
 # Start frontend in a new window
 Write-Host "`nStarting frontend service..." -ForegroundColor Green
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location -Path './frontend'; npm start"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "Set-Location -Path './frontend'; npm run dev"
 
 Write-Host "`nServices are starting..." -ForegroundColor Cyan
-Write-Host "Access the frontend at http://localhost:5173" -ForegroundColor Yellow
-Write-Host "Backend API is running at http://localhost:5000" -ForegroundColor Yellow
+Write-Host "Access the frontend at http://localhost:5174" -ForegroundColor Yellow
+Write-Host "Backend API is running at http://localhost:8000" -ForegroundColor Yellow
 Write-Host "`nPress Ctrl+C in each terminal window to stop the services when done." -ForegroundColor Magenta 
