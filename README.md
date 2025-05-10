@@ -9,6 +9,7 @@ A full-stack application for organizing notes, creating flashcards, and managing
 - Flashcard generation from notes
 - OCR for extracting text from images and PDFs
 - Search functionality across notes and flashcards
+- Meta-Llama-3 integration for high-quality AI generation
 
 ## Setup and Installation
 
@@ -16,6 +17,25 @@ A full-stack application for organizing notes, creating flashcards, and managing
 
 - Node.js (v14 or higher)
 - npm (v6 or higher)
+- Python 3.8+ (for Django backend)
+
+### Hugging Face API Setup (Optional)
+
+For advanced AI features using Meta-Llama-3:
+
+1. Create a Hugging Face account at https://huggingface.co if you don't have one
+2. Generate an access token at https://huggingface.co/settings/tokens
+3. Set the token as an environment variable:
+   ```
+   # Windows
+   set HF_TOKEN=your_hugging_face_token
+   
+   # Linux/macOS
+   export HF_TOKEN=your_hugging_face_token
+   ```
+4. For persistent storage, add it to your environment variables or .env file
+
+**Note:** If you don't set up the Hugging Face token, the application will fall back to using simpler rule-based AI processing.
 
 ### Installation
 
