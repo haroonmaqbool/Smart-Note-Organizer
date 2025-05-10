@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Box, 
   Typography, 
@@ -14,7 +14,14 @@ import {
   Avatar,
   useTheme,
   alpha,
-  Container
+  Container,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
+  Snackbar,
+  Alert
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -23,16 +30,30 @@ import {
   School as SchoolIcon,
   ArrowForward as ArrowForwardIcon,
   DateRange as DateRangeIcon,
-  Label as LabelIcon
+  Label as LabelIcon,
+  Psychology as PsychologyIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { api, Flashcard as ApiFlashcard } from '../services/api';
+import { v4 as uuidv4 } from 'uuid';
 
 const Dashboard: React.FC = () => {
   // Get notes from AppContext
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const { notes } = state;
   const theme = useTheme();
+
+  // State for AI flashcard generation
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [selectedNote, setSelectedNote] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedFlashcards, setGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
+  const [notification, setNotification] = useState({ 
+    open: false, 
+    message: '', 
+    severity: 'success' as 'success' | 'error' | 'info' | 'warning' 
+  });
 
   // Calculate some stats
   const totalNotes = notes.length;
@@ -56,6 +77,77 @@ const Dashboard: React.FC = () => {
       </Typography>
     </Card>
   );
+
+  const handleGenerateAIFlashcards = async (note: any) => {
+    setSelectedNote(note);
+    setAiDialogOpen(true);
+    setIsGenerating(true);
+    setGeneratedFlashcards([]);
+
+    try {
+      // Use the content of the note to generate flashcards
+      const content = note.content;
+      const title = note.title;
+      const tags = note.tags;
+
+      const result = await api.chatbot(content, title, tags);
+
+      if (result.error) {
+        setNotification({
+          open: true,
+          message: `Error generating flashcards: ${result.error}`,
+          severity: 'error'
+        });
+        return;
+      }
+
+      if (result.data && result.data.flashcards) {
+        setGeneratedFlashcards(result.data.flashcards);
+      } else {
+        setNotification({
+          open: true,
+          message: 'No flashcards could be generated from this content',
+          severity: 'warning'
+        });
+      }
+    } catch (error) {
+      console.error('Error generating AI flashcards:', error);
+      setNotification({
+        open: true,
+        message: 'Failed to generate AI flashcards',
+        severity: 'error'
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleSaveGeneratedFlashcards = () => {
+    // Convert the API flashcard format to the app's flashcard format
+    const flashcardsToSave = generatedFlashcards.map(card => ({
+      id: uuidv4(),
+      front: card.question,
+      back: card.answer,
+      tags: [...card.tags],
+      noteId: selectedNote?.id,
+      createdAt: new Date()
+    }));
+    
+    // Dispatch action to add flashcards to global state
+    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
+    
+    // Show success message and close dialog
+    setNotification({
+      open: true,
+      message: `${flashcardsToSave.length} flashcards saved successfully!`,
+      severity: 'success'
+    });
+    setAiDialogOpen(false);
+  };
+
+  const handleCloseNotification = () => {
+    setNotification({ ...notification, open: false });
+  };
 
   return (
     <Box className="fade-in">
@@ -239,19 +331,35 @@ const Dashboard: React.FC = () => {
                           </Typography>
                         </Box>
                         
-                        <Button 
-                          variant="outlined"
-                          size="small" 
-                          startIcon={<NoteIcon />} 
-                          component={Link}
-                          to={`/editor?id=${note.id}`}
-                          sx={{ 
-                            fontWeight: 500,
-                            '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) }
-                          }}
-                        >
-                          Open
-                        </Button>
+                        <Box>
+                          <Button 
+                            variant="outlined"
+                            size="small" 
+                            startIcon={<NoteIcon />} 
+                            component={Link}
+                            to={`/editor?id=${note.id}`}
+                            sx={{ 
+                              mr: 1,
+                              fontWeight: 500,
+                              '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.05) }
+                            }}
+                          >
+                            Open
+                          </Button>
+                          <Button 
+                            variant="outlined"
+                            size="small" 
+                            color="secondary"
+                            startIcon={<PsychologyIcon />} 
+                            onClick={() => handleGenerateAIFlashcards(note)}
+                            sx={{ 
+                              fontWeight: 500,
+                              '&:hover': { backgroundColor: alpha(theme.palette.secondary.main, 0.05) }
+                            }}
+                          >
+                            Create Flashcards
+                          </Button>
+                        </Box>
                       </Box>
                       
                       <Box sx={{ mb: 2 }}>
@@ -406,6 +514,94 @@ const Dashboard: React.FC = () => {
           </Paper>
         </Grid>
       </Grid>
+
+      {/* AI Flashcard Generation Dialog */}
+      <Dialog
+        open={aiDialogOpen}
+        onClose={() => !isGenerating && setAiDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+      >
+        <DialogTitle>
+          Generate AI Flashcards: {selectedNote?.title}
+          {isGenerating && <CircularProgress size={24} sx={{ ml: 2 }} />}
+        </DialogTitle>
+        <DialogContent dividers>
+          {isGenerating ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography>Generating flashcards based on note content...</Typography>
+            </Box>
+          ) : (
+            <>
+              {generatedFlashcards.length > 0 ? (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Generated Flashcards
+                  </Typography>
+                  {generatedFlashcards.map((card, index) => (
+                    <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.secondary.main, 0.05) }}>
+                      <CardContent>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
+                          Q: {card.question}
+                        </Typography>
+                        <Divider sx={{ my: 1 }} />
+                        <Typography variant="body1">
+                          A: {card.answer}
+                        </Typography>
+                        <Box sx={{ mt: 1 }}>
+                          {card.tags.map((tag, tagIndex) => (
+                            <Chip 
+                              key={tagIndex} 
+                              label={tag} 
+                              size="small" 
+                              variant="outlined"
+                              sx={{ mr: 0.5, mt: 0.5 }}
+                            />
+                          ))}
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No flashcards could be generated. Try with a different note or content.
+                </Typography>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setAiDialogOpen(false)} 
+            color="inherit"
+            disabled={isGenerating}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSaveGeneratedFlashcards} 
+            color="primary"
+            variant="contained"
+            disabled={isGenerating || generatedFlashcards.length === 0}
+          >
+            Save Flashcards
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Notifications */}
+      <Snackbar 
+        open={notification.open} 
+        autoHideDuration={4000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity={notification.severity} onClose={handleCloseNotification}>
+          {notification.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
