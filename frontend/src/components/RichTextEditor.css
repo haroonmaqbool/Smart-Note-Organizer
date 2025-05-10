@@ -176,4 +176,14 @@
   position: absolute;
   color: #aaa;
   pointer-events: none;
+}
+
+/* Placeholder styling for the new data-placeholder attribute */
+.rich-text-editor-content:empty:before {
+  content: attr(data-placeholder);
+  color: #aaa;
+  pointer-events: none;
+  position: absolute;
+  left: 16px;
+  top: 16px;
 } 

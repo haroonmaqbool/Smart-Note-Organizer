@@ -77,7 +77,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [expandedToolbar, setExpandedToolbar] = useState(false);
-  const [editorContent, setEditorContent] = useState(initialContent);
+  const editorContentRef = useRef(initialContent);
   
   // Link dialog states
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -93,21 +93,32 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const colors = ['#000000', '#e60000', '#ff9900', '#ffff00', '#008a00', '#0066cc', '#9933ff', '#ffffff'];
   
   // Initialize editor with initial content
+  const firstMount = useRef(true);
   useEffect(() => {
     if (editorRef.current) {
       // Create a temporary div to sanitize the HTML
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = initialContent;
-      
       // Clear existing content
       editorRef.current.innerHTML = '';
-      
       // Append sanitized content
       while (tempDiv.firstChild) {
         editorRef.current.appendChild(tempDiv.firstChild);
       }
-      
-      setEditorContent(initialContent);
+      editorContentRef.current = initialContent;
+      // Only focus and move caret to end on first mount
+      if (firstMount.current) {
+        editorRef.current.focus();
+        const range = document.createRange();
+        range.selectNodeContents(editorRef.current);
+        range.collapse(false); // false = to end
+        const sel = window.getSelection();
+        if (sel) {
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        firstMount.current = false;
+      }
     }
   }, [initialContent]);
 
@@ -152,12 +163,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     return () => document.removeEventListener('selectionchange', updateActiveFormats);
   }, []);
 
-  // Handle content changes and propagate to parent
+  // Handle content changes (do not update state, just update ref)
   const handleContentChange = () => {
     if (editorRef.current) {
-      const newContent = editorRef.current.innerHTML;
-      setEditorContent(newContent);
-      onChange(newContent);
+      editorContentRef.current = editorRef.current.innerHTML;
+    }
+  };
+
+  // Call onChange only on blur (or you can debounce if you want live updates)
+  const handleBlur = () => {
+    if (editorRef.current) {
+      onChange(editorRef.current.innerHTML);
     }
   };
 
@@ -165,12 +181,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const execFormatCommand = (command: string, value: string = '') => {
     document.execCommand(command, false, value);
     handleContentChange();
-    
-    // Focus back to the editor
-    if (editorRef.current) {
-      editorRef.current.focus();
-    }
-    
+    // Do NOT move caret or focus here; let the browser handle caret position naturally
     // Update active formats immediately after command
     const formats = [...activeFormats];
     switch (command) {
@@ -892,60 +903,24 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </Paper>
       
       {/* Editable Content Area */}
-      <Box
+      <div
         ref={editorRef}
         contentEditable
         suppressContentEditableWarning
         onInput={handleContentChange}
         onKeyDown={handleKeyDown}
-        onBlur={handleContentChange}
-        sx={{
+        onBlur={handleBlur}
+        className="rich-text-editor-content"
+        style={{
           direction: 'ltr',
-          p: 2,
           minHeight: minHeight,
           outline: 'none',
           overflowY: 'auto',
           flex: 1,
-          '&:focus': {
-            boxShadow: `inset 0 0 0 2px ${alpha(theme.palette.primary.main, 0.2)}`,
-          },
-          '&:empty:before': {
-            content: `"${placeholder}"`,
-            color: alpha(theme.palette.text.primary, 0.4),
-            pointerEvents: 'none',
-          },
-          '& blockquote': {
-            borderLeft: `4px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-            margin: '0.5em 0',
-            padding: '0.5em 1em',
-            backgroundColor: alpha(theme.palette.primary.main, 0.05),
-          },
-          '& ul, & ol': {
-            paddingLeft: '1.5em',
-          },
-          '& h1': {
-            fontSize: '1.6em',
-            margin: '0.5em 0',
-          },
-          '& h2': {
-            fontSize: '1.4em',
-            margin: '0.5em 0',
-          },
-          '& h3': {
-            fontSize: '1.2em',
-            margin: '0.5em 0',
-          },
-          '& code': {
-            fontFamily: 'monospace',
-            backgroundColor: alpha(theme.palette.grey[300], 0.5),
-            padding: '0 0.2em',
-            borderRadius: '3px',
-          },
-          '& a': {
-            color: theme.palette.primary.main,
-            textDecoration: 'underline',
-          },
+          padding: 16,
+          position: 'relative',
         }}
+        data-placeholder={placeholder}
       />
       
       {/* OCR Preview Dialog */}
