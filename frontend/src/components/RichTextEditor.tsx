@@ -77,6 +77,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [previewText, setPreviewText] = useState('');
   const [expandedToolbar, setExpandedToolbar] = useState(false);
+  const [editorContent, setEditorContent] = useState(initialContent);
   
   // Link dialog states
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -95,6 +96,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   useEffect(() => {
     if (editorRef.current) {
       editorRef.current.innerHTML = initialContent;
+      setEditorContent(initialContent);
     }
   }, [initialContent]);
 
@@ -142,7 +144,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Handle content changes and propagate to parent
   const handleContentChange = () => {
     if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+      const newContent = editorRef.current.innerHTML;
+      setEditorContent(newContent);
+      onChange(newContent);
     }
   };
 
@@ -264,9 +268,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    // Implement shortcut keys
-    if (e.ctrlKey) {
-      switch (e.key.toLowerCase()) {
+    // Handle tab key to indent
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
+      handleContentChange();
+      return;
+    }
+    
+    // Support common keyboard shortcuts
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.key) {
         case 'b':
           e.preventDefault();
           execFormatCommand('bold');
@@ -279,28 +291,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           e.preventDefault();
           execFormatCommand('underline');
           break;
-        case 'k':
-          e.preventDefault();
-          openLinkDialog();
-          break;
       }
-    }
-    
-    // Smart list continuation
-    if (e.key === 'Enter' && (activeFormats.includes('list') || activeFormats.includes('ordered-list'))) {
-      // Let the browser handle continuation, then update content
-      setTimeout(handleContentChange, 0);
-    }
-
-    // Tab for list indentation
-    if (e.key === 'Tab' && (activeFormats.includes('list') || activeFormats.includes('ordered-list'))) {
-      e.preventDefault();
-      if (e.shiftKey) {
-        document.execCommand('outdent', false, '');
-      } else {
-        document.execCommand('indent', false, '');
-      }
-      handleContentChange();
     }
   };
 
@@ -448,21 +439,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     handleContentChange();
   };
 
-  // Font size adjustments
+  // Adjust font size
   const adjustFontSize = (increase: boolean) => {
-    // Get current selection
+    const sizeMap: Record<string, string> = {
+      '1': '10px',
+      '2': '13px',
+      '3': '16px',
+      '4': '18px',
+      '5': '24px',
+      '6': '32px',
+      '7': '48px'
+    };
+    
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
-      const parentEl = range.commonAncestorContainer.parentElement;
-      
-      // Create a span with increased/decreased font size
       const span = document.createElement('span');
-      if (increase) {
-        span.style.fontSize = '120%';
-      } else {
-        span.style.fontSize = '80%';
-      }
+      const currentSize = window.getComputedStyle(range.commonAncestorContainer as Element).fontSize;
+      const currentSizeNum = parseInt(currentSize);
+      
+      span.style.fontSize = `${increase ? currentSizeNum + 2 : Math.max(10, currentSizeNum - 2)}px`;
       
       range.surroundContents(span);
       handleContentChange();
@@ -474,13 +470,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
+      const pre = document.createElement('pre');
       const code = document.createElement('code');
-      code.style.fontFamily = 'monospace';
-      code.style.backgroundColor = alpha(theme.palette.grey[300], 0.5);
-      code.style.padding = '0 0.2em';
-      code.style.borderRadius = '3px';
       
-      range.surroundContents(code);
+      pre.style.backgroundColor = alpha(theme.palette.primary.main, 0.1);
+      pre.style.padding = '8px';
+      pre.style.borderRadius = '4px';
+      pre.style.fontFamily = 'monospace';
+      pre.style.overflowX = 'auto';
+      
+      if (range.toString()) {
+        code.textContent = range.toString();
+        pre.appendChild(code);
+        range.deleteContents();
+        range.insertNode(pre);
+      } else {
+        code.textContent = 'Your code here';
+        pre.appendChild(code);
+        range.insertNode(pre);
+      }
+      
       handleContentChange();
     }
   };
@@ -878,6 +887,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         suppressContentEditableWarning
         onInput={handleContentChange}
         onKeyDown={handleKeyDown}
+        onBlur={handleContentChange}
         sx={{
           p: 2,
           minHeight: minHeight,

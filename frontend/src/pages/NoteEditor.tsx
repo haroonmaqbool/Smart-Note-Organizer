@@ -73,6 +73,7 @@ const NoteEditor: React.FC = () => {
   const [aiModel, setAiModel] = useState<AIModel>('bart');
   const [availableModel, setAvailableModel] = useState<string | null>(null);
   const [noteId, setNoteId] = useState<string | null>(null);
+  const [redirectAfterSave, setRedirectAfterSave] = useState(false);
   
   // New state for chatbot dialog
   const [chatbotOpen, setChatbotOpen] = useState(false);
@@ -81,10 +82,13 @@ const NoteEditor: React.FC = () => {
   const [generatedFlashcards, setGeneratedFlashcards] = useState<Flashcard[]>([]);
   const [generatedSummary, setGeneratedSummary] = useState('');
   
-  const showSnackbarMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning') => {
+  const showSnackbarMessage = (message: string, severity: 'success' | 'error' | 'info' | 'warning', shouldRedirect = false) => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setShowSnackbar(true);
+    if (shouldRedirect) {
+      setRedirectAfterSave(true);
+    }
   };
   
   useEffect(() => {
@@ -119,6 +123,17 @@ const NoteEditor: React.FC = () => {
       }
     }
   }, [location.search, state.notes]);
+
+  // Handle redirection after save
+  useEffect(() => {
+    if (redirectAfterSave && !isLoading) {
+      const timer = setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [redirectAfterSave, isLoading, navigate]);
 
   const autoGenerateTags = async (text: string) => {
     if (text.trim().length < 50) return;
@@ -204,7 +219,7 @@ const NoteEditor: React.FC = () => {
       front: card.question,
       back: card.answer,
       tags: [...card.tags],
-      noteId: uuidv4(), // This would be the note ID if we were creating a note
+      noteId: noteId || uuidv4(), // This would be the note ID if we were creating a note
       createdAt: new Date()
     }));
     
@@ -287,13 +302,8 @@ const NoteEditor: React.FC = () => {
         // Update in state context
         dispatch({ type: 'UPDATE_NOTE', payload: updatedNote });
         
-        // Show success message
-        showSnackbarMessage('Note updated successfully!', 'success');
-        
-        // Navigate back after delay
-        setTimeout(() => {
-          navigate('/dashboard');
-        }, 1500);
+        // Show success message and redirect
+        showSnackbarMessage('Note updated successfully!', 'success', true);
       } else {
         // Create new note object
         const note = {
@@ -309,18 +319,8 @@ const NoteEditor: React.FC = () => {
         // Save to state context
         dispatch({ type: 'ADD_NOTE', payload: note });
         
-        // Show success message
-        showSnackbarMessage('Note saved successfully!', 'success');
-        
-        // Reset form after delay
-        setTimeout(() => {
-          setTitle('');
-          setContent('');
-          setTags([]);
-          
-          // Navigate to view all notes
-          navigate('/dashboard');
-        }, 1500);
+        // Show success message and redirect
+        showSnackbarMessage('Note saved successfully!', 'success', true);
       }
     } catch (error) {
       console.error('Error saving note:', error);
@@ -348,6 +348,15 @@ const NoteEditor: React.FC = () => {
 
   const navigateBack = () => {
     navigate('/dashboard');
+  };
+
+  const handleContentChange = (html: string) => {
+    setContent(html);
+    
+    // Auto-generate tags if the content is long enough (and we don't have many tags yet)
+    if (html.length > 200 && tags.length < 3 && !isTaggingLoading) {
+      autoGenerateTags(html);
+    }
   };
 
   return (
@@ -541,7 +550,7 @@ const NoteEditor: React.FC = () => {
           ) : (
             <RichTextEditor
               initialContent={content}
-              onChange={setContent}
+              onChange={handleContentChange}
               placeholder="Start writing your note..."
               minHeight={500}
             />

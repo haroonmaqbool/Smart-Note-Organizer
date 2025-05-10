@@ -1,6 +1,22 @@
 {
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.4.1",
-    "vite": "^6.3.5"
+  "name": "smart-note-organizer",
+  "version": "1.0.0",
+  "description": "Smart Note Organizer with React frontend and Express backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "npm-run-all --parallel backend frontend",
+    "backend": "cd backend && npm start",
+    "frontend": "cd frontend && npm start",
+    "dev": "npm-run-all --parallel backend:dev frontend:dev",
+    "backend:dev": "cd backend && npm run dev",
+    "frontend:dev": "cd frontend && npm start",
+    "install:all": "npm install && npm run install:backend && npm run install:frontend",
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "setup": "npm install && npm install npm-run-all -g && npm run install:all"
+  },
+  "dependencies": {
+    "concurrently": "^8.2.0",
+    "npm-run-all": "^4.1.5"
   }
 }

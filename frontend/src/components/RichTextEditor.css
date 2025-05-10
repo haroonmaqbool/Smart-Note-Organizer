@@ -1,3 +1,110 @@
+/* RichTextEditor Styles */
+
+/* Ensure proper cursor and behavior for content editable */
+[contenteditable=true]:focus {
+  outline: none;
+}
+
+/* Styling for common elements in the editor */
+[contenteditable=true] {
+  padding: 16px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+/* Proper spacing for paragraphs */
+[contenteditable=true] p {
+  margin: 0.8em 0;
+}
+
+/* Heading styles */
+[contenteditable=true] h1 {
+  font-size: 2em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+[contenteditable=true] h2 {
+  font-size: 1.5em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+[contenteditable=true] h3 {
+  font-size: 1.3em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+/* List styles */
+[contenteditable=true] ul, 
+[contenteditable=true] ol {
+  padding-left: 1.5em;
+  margin: 0.8em 0;
+}
+
+[contenteditable=true] li {
+  margin: 0.3em 0;
+}
+
+/* Blockquote styles */
+[contenteditable=true] blockquote {
+  margin: 1em 0;
+  padding-left: 1em;
+  border-left: 3px solid #ccc;
+  color: #666;
+}
+
+/* Code styles */
+[contenteditable=true] code {
+  font-family: 'Courier New', Courier, monospace;
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 0.2em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+[contenteditable=true] pre {
+  background-color: rgba(0, 0, 0, 0.05);
+  padding: 1em;
+  border-radius: 4px;
+  overflow-x: auto;
+  font-family: 'Courier New', Courier, monospace;
+  margin: 1em 0;
+}
+
+/* Image styles */
+[contenteditable=true] img {
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+}
+
+/* Link styles */
+[contenteditable=true] a {
+  color: #0074cc;
+  text-decoration: none;
+}
+
+[contenteditable=true] a:hover {
+  text-decoration: underline;
+}
+
+/* Firefox specific fix for caret position */
+@-moz-document url-prefix() {
+  [contenteditable=true] {
+    position: relative;
+  }
+}
+
+/* Fix for Safari and Firefox to ensure proper line height */
+[contenteditable=true]:empty:before {
+  content: attr(placeholder);
+  color: #aaa;
+  display: block;
+  pointer-events: none;
+}
+
 /* Rich Text Editor Styles */
 
 .active-format {
@@ -5,10 +112,6 @@
 }
 
 /* Editor content styles */
-[contenteditable=true]:focus {
-  outline: none;
-}
-
 [contenteditable=true] blockquote {
   margin: 0.5em 0;
   padding: 0.5em 1em;
