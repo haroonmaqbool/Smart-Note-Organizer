@@ -164,6 +164,150 @@ export interface Summary {
   model_used: string;
 }
 
+// Add this function before the api object definition
+async function generateTagsWithOpenRouter(text: string): Promise<{ tags: string[], model_used: string } | null> {
+  try {
+    console.log('Attempting OpenRouter API for tag generation...');
+    
+    // Improved system prompt for better tag generation
+    const systemPrompt = `You are an expert tagging system that identifies the most relevant topic tags from text content.
+
+As a specialist in information organization, your task is to:
+1. Analyze the provided text to identify key themes, concepts, domain-specific terminology, and important topics
+2. Generate 5-8 specific, descriptive tags that accurately represent the content
+3. Prioritize tags that would be useful for categorization and discovery
+4. Focus on domain-relevant terminology rather than generic terms
+5. Ensure tags are concise (1-3 words maximum per tag)
+6. Avoid overly broad tags (like "information" or "data" by themselves)
+7. Remove any HTML formatting from your analysis
+8. Return ONLY a JSON array of string tags, nothing else
+
+Example of good tags for medical content: ["oncology", "cancer treatment", "clinical trials", "immunotherapy", "patient care", "diagnostic imaging"]
+Example of good tags for programming content: ["react hooks", "state management", "functional components", "javascript", "frontend", "performance optimization"]`;
+
+    // Improved user prompt
+    const userPrompt = `Extract the most relevant tags from this content (consider domain, subject matter, key concepts, and specific terminology):\n\n${text.substring(0, 2000)}${text.length > 2000 ? '...' : ''}`;
+
+    console.log('Sending request to OpenRouter with API key:', OPENROUTER_API_KEY.substring(0, 10) + '...');
+    
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": window.location.origin,
+        "X-Title": "NoteNest",
+      },
+      body: JSON.stringify({
+        "model": "anthropic/claude-3-haiku:free",
+        "messages": [
+          {
+            "role": "system",
+            "content": systemPrompt
+          },
+          {
+            "role": "user",
+            "content": userPrompt
+          }
+        ]
+      })
+    });
+
+    // Log the status of the OpenRouter response
+    console.log('OpenRouter response status:', openRouterResponse.status);
+    
+    if (!openRouterResponse.ok) {
+      console.error('OpenRouter API returned error status:', openRouterResponse.status);
+      return null;
+    }
+    
+    const responseText = await openRouterResponse.text();
+    console.log('OpenRouter raw response:', responseText);
+    
+    let llmData;
+    try {
+      llmData = JSON.parse(responseText);
+    } catch (jsonError) {
+      console.error('Failed to parse OpenRouter response as JSON:', jsonError);
+      return null;
+    }
+
+    if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
+      const content = llmData.choices[0].message.content;
+      console.log('OpenRouter response content:', content);
+      
+      try {
+        // Primary parsing approach - direct JSON parse
+        let tags: string[] | null = null;
+        
+        // Try parsing the content as JSON
+        try {
+          // First try to parse content directly
+          if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+            tags = JSON.parse(content);
+          } else {
+            // Look for array pattern in the content
+            const arrayMatch = content.match(/\[.*?\]/s);
+            if (arrayMatch) {
+              tags = JSON.parse(arrayMatch[0]);
+            } else {
+              // If no JSON array, try extracting tags manually
+              const tagLines = content.split(/\n|,/).map((line: string) => line.trim());
+              const extractedTags = tagLines
+                .filter((line: string) => 
+                  line.length > 0 && 
+                  !line.includes('tags:') && 
+                  !line.includes('Tags:') && 
+                  !line.startsWith('-')
+                )
+                .map((line: string) => {
+                  // Clean up each tag
+                  return line
+                    .replace(/^["'\[\s\d\.]+|["'\]\s]+$/g, '') // Remove quotes, brackets, numbers, etc.
+                    .replace(/^\s*-\s*/, '') // Remove leading dash
+                    .trim();
+                })
+                .filter((tag: string) => tag.length > 1);
+              
+              if (extractedTags.length > 0) {
+                tags = extractedTags;
+              }
+            }
+          }
+          
+          console.log('Parsed tags:', tags);
+        } catch (jsonError) {
+          console.warn('JSON parse failed:', jsonError);
+        }
+        
+        // Validate we have tags and they are in the right format
+        if (Array.isArray(tags) && tags.length > 0) {
+          // Clean up the tags to ensure they are strings and reasonably formatted
+          const cleanedTags = tags
+            .map((tag: any) => typeof tag === 'string' ? tag.trim() : String(tag).trim())
+            .filter((tag: string) => tag.length > 1 && tag.length < 30) // Reasonable tag length
+            .slice(0, 8); // Limit to 8 tags
+          
+          if (cleanedTags.length > 0) {
+            console.log('OpenRouter API successfully generated tags:', cleanedTags);
+            return { 
+              tags: cleanedTags, 
+              model_used: "openrouter-claude3" 
+            };
+          }
+        }
+      } catch (jsonError) {
+        console.warn('Error processing OpenRouter response:', jsonError);
+      }
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('OpenRouter API error:', error);
+    return null;
+  }
+}
+
 // Helper function to generate flashcards with OpenRouter API
 async function generateFlashcardsWithOpenRouter(content: string, title?: string, tags?: string[]): Promise<ChatbotResponse | null> {
   try {
@@ -188,7 +332,7 @@ Return ONLY a JSON object with the following format:
   ],
   "tags": ["tag1", "tag2"],
   "summary": "Brief summary of the content",
-  "model_used": "openrouter-llama3"
+  "model_used": "openrouter-claude3"
 }`;
 
     const userPrompt = `Create flashcards from this content${title ? ' titled "' + title + '"' : ''}${tags && tags.length > 0 ? ' with tags: ' + tags.join(', ') : ''}:\n\n${content.substring(0, 3000)}`;
@@ -202,7 +346,7 @@ Return ONLY a JSON object with the following format:
         "X-Title": "NoteNest",
       },
       body: JSON.stringify({
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
+        "model": "anthropic/claude-3-haiku:free",
         "messages": [
           {
             "role": "system",
@@ -216,34 +360,46 @@ Return ONLY a JSON object with the following format:
       })
     });
 
-    if (openRouterResponse.ok) {
-      const llmData = await openRouterResponse.json();
-      if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
-        const content = llmData.choices[0].message.content;
-        try {
-          // Find JSON in the response
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            const jsonStr = jsonMatch[0];
-            const result = JSON.parse(jsonStr);
+    if (!openRouterResponse.ok) {
+      console.error('OpenRouter API returned error status:', openRouterResponse.status);
+      return null;
+    }
+    
+    const responseText = await openRouterResponse.text();
+    let llmData;
+    
+    try {
+      llmData = JSON.parse(responseText);
+    } catch (jsonError) {
+      console.error('Failed to parse OpenRouter response as JSON:', jsonError);
+      return null;
+    }
+    
+    if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
+      const content = llmData.choices[0].message.content;
+      try {
+        // Find JSON in the response
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const jsonStr = jsonMatch[0];
+          const result = JSON.parse(jsonStr);
+          
+          // Validate the result structure
+          if (result.flashcards && Array.isArray(result.flashcards) && 
+              result.tags && Array.isArray(result.tags) && 
+              typeof result.summary === 'string') {
             
-            // Validate the result structure
-            if (result.flashcards && Array.isArray(result.flashcards) && 
-                result.tags && Array.isArray(result.tags) && 
-                typeof result.summary === 'string') {
-              
-              console.log('OpenRouter API successfully generated flashcards:', result);
-              return {
-                flashcards: result.flashcards,
-                tags: result.tags,
-                summary: result.summary,
-                model_used: "openrouter-llama3"
-              };
-            }
+            console.log('OpenRouter API successfully generated flashcards:', result);
+            return {
+              flashcards: result.flashcards,
+              tags: result.tags,
+              summary: result.summary,
+              model_used: "openrouter-claude3"
+            };
           }
-        } catch (jsonError) {
-          console.warn('Error parsing OpenRouter response:', jsonError);
         }
+      } catch (jsonError) {
+        console.warn('Error parsing OpenRouter response:', jsonError);
       }
     }
     return null;
@@ -648,148 +804,42 @@ export const api = {
     try {
       console.log('Starting tag generation process for text length:', text.length);
       
-      // Attempt OpenRouter AI first for better tag generation
-      let openRouterSuccess = false;
-      let backendSuccess = false;
-      let fallbackSuccess = false;
-      
+      // Try OpenRouter API for tag generation
       try {
-        console.log('Attempting OpenRouter API for tag generation...');
-        const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-          method: 'POST',
-          headers: {
-            "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": window.location.origin,
-            "X-Title": "SmartNoteOrganizer",
-          },
-          body: JSON.stringify({
-            "model": "meta-llama/llama-3.3-70b-instruct:free",
-            "messages": [
-              {
-                "role": "system",
-                "content": "You are an expert tagging assistant that extracts relevant, specific, and descriptive tags from text. Extract 3-5 relevant tags based on the key concepts, themes, and topics in the content. Return only a valid JSON array of tags (strings), nothing else. Example: [\"tag1\", \"tag2\", \"tag3\"]"
-              },
-              {
-                "role": "user",
-                "content": `Extract 3-5 relevant keyword tags from this text, focusing on the main concepts and topics: "${text.substring(0, 1000)}..."`
-              }
-            ]
-          })
-        });
-
-        // Log the status of the OpenRouter response
-        console.log('OpenRouter response status:', openRouterResponse.status);
-
-        if (openRouterResponse.ok) {
-          const llmData = await openRouterResponse.json();
-          console.log('OpenRouter API returned data:', llmData.choices ? 'Has choices' : 'No choices');
-          
-          if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
-            const content = llmData.choices[0].message.content;
-            console.log('OpenRouter response content:', content);
-            
-            try {
-              // Try multiple approaches to extract the tags
-              let tags = null;
-              
-              // Approach 1: Direct JSON parse if the response is a valid JSON array
-              try {
-                if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
-                  tags = JSON.parse(content);
-                  console.log('Direct JSON parse succeeded:', tags);
-                }
-              } catch (directJsonError) {
-                console.warn('Direct JSON parse failed:', directJsonError);
-              }
-              
-              // Approach 2: Extract JSON array from the response content
-              if (!tags) {
-                try {
-                  if (content.includes('[') && content.includes(']')) {
-                    const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1);
-                    tags = JSON.parse(jsonStr);
-                    console.log('JSON extraction succeeded:', tags);
-                  }
-                } catch (extractJsonError) {
-                  console.warn('Extracting JSON array failed:', extractJsonError);
-                }
-              }
-              
-              // Approach 3: Handle responses with tags on separate lines or comma-separated
-              if (!tags) {
-                console.log('Attempting to parse tags from text format');
-                tags = content.split(/,|\n/).map((tag: string) => {
-                  // Clean up the tag: remove quotes, dashes, brackets, etc.
-                  return tag.trim()
-                    .replace(/^['"\[\s-]*|['"\]\s]*$/g, '') // Remove quotes, brackets at start/end
-                    .replace(/^-\s*/, '') // Remove leading dash
-                    .trim();
-                }).filter((tag: string) => tag.length > 0);
-                console.log('Text-based parsing result:', tags);
-              }
-              
-              // Validate we have tags and they are in the right format
-              if (Array.isArray(tags) && tags.length > 0) {
-                // Clean up the tags to ensure they are strings and reasonably formatted
-                const cleanedTags = tags
-                  .map(tag => typeof tag === 'string' ? tag.trim() : String(tag).trim())
-                  .filter(tag => tag.length > 1)
-                  .slice(0, 5); // Limit to 5 tags
-                
-                if (cleanedTags.length > 0) {
-                  console.log('OpenRouter API successfully generated tags:', cleanedTags);
-                  openRouterSuccess = true;
-                  return { 
-                    data: { 
-                      tags: cleanedTags, 
-                      model_used: "openrouter-llama3" 
-                    } 
-                  };
-                } else {
-                  console.warn('OpenRouter API returned tags but they were filtered out');
-                }
-              } else {
-                console.warn('OpenRouter API did not return valid tags array');
-              }
-            } catch (jsonError) {
-              console.warn('Error processing OpenRouter response:', jsonError);
-            }
-          } else {
-            console.warn('OpenRouter API response missing choices or message');
-          }
-        } else {
-          const errorText = await openRouterResponse.text().catch(() => 'Could not read error response');
-          console.warn(`OpenRouter API returned error status ${openRouterResponse.status}: ${errorText}`);
+        const result = await generateTagsWithOpenRouter(text);
+        if (result && result.tags && result.tags.length > 0) {
+          return { 
+            data: { 
+              tags: result.tags, 
+              model_used: result.model_used || "openrouter-ai" 
+            } 
+          };
         }
       } catch (openRouterError) {
-        console.warn('OpenRouter API error:', openRouterError);
+        console.warn('OpenRouter tag generation failed:', openRouterError);
       }
       
-      console.log('OpenRouter AI tag generation ' + (openRouterSuccess ? 'succeeded' : 'failed') + ', trying backend...');
-      
-      // Fall back to backend API if OpenRouter fails
+      // Try backend API if OpenRouter fails
       try {
         console.log('Attempting backend API for tag generation...');
-      const response = await fetch(`${API_BASE_URL}/tag`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text, ai_model: aiModel }),
-      });
+        const response = await fetch(`${API_BASE_URL}/tag`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text, ai_model: aiModel }),
+        });
 
         console.log('Backend tag API response status:', response.status);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
           console.warn('Backend tag API error:', errorData.error || `Status ${response.status}`);
         } else {
           const data = await response.json();
           console.log('Backend tag API response:', data);
           
           if (data && data.tags && Array.isArray(data.tags) && data.tags.length > 0) {
-            backendSuccess = true;
             return { data: {
               tags: data.tags,
               model_used: data.model_used || "backend-ai"
@@ -801,8 +851,6 @@ export const api = {
       } catch (backendError) {
         console.warn('Backend tag API error:', backendError);
       }
-      
-      console.log('Backend tag generation ' + (backendSuccess ? 'succeeded' : 'failed') + ', using client-side fallback...');
       
       // If all else fails, use a simple client-side tag extraction
       try {
@@ -829,7 +877,6 @@ export const api = {
         console.log('Client-side tag extraction result:', sortedWords);
         
         if (sortedWords.length > 0) {
-          fallbackSuccess = true;
           return { data: {
             tags: sortedWords,
             model_used: "client-side-fallback"

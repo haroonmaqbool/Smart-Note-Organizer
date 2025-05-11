@@ -154,9 +154,10 @@ const NoteEditor: React.FC = () => {
     
     try {
       setIsTaggingLoading(true);
-      showSnackbarMessage('Analyzing content...', 'info');
-      console.log('Initiating tag generation for text length:', text.length);
+      showSnackbarMessage('Analyzing content with AI...', 'info');
+      console.log('Initiating AI tag generation for text length:', text.length);
       
+      // First attempt: Use OpenRouter AI via our improved API
       const response = await api.tag(text, aiModel);
       
       if (response.data?.tags) {
@@ -175,21 +176,30 @@ const NoteEditor: React.FC = () => {
             !tags.includes(tag) && 
             !tag.includes('.') && 
             !tag.includes(',')
-          )
-          .slice(0, 5); // Limit to 5 new tags
+          );
           
         if (newTags.length > 0) {
-          setTags(prevTags => [...new Set([...prevTags, ...newTags])]);
+          // Add new tags to the existing tags array
+          setTags(prevTags => {
+            // Create a set of combined tags to eliminate duplicates
+            const combinedTags = new Set([...prevTags]);
+            
+            // Add new tags to the set (automatically handles duplicates)
+            newTags.forEach(tag => combinedTags.add(tag));
+            
+            // Convert set back to array
+            return Array.from(combinedTags);
+          });
           
           // Show appropriate message based on what model was used
           if (isAI) {
-            showSnackbarMessage('Tags generated with AI model', 'success');
+            showSnackbarMessage(`Generated ${newTags.length} tags with Llama 3 AI model`, 'success');
           } else if (isBackend) {
-            showSnackbarMessage('Tags generated using server processing', 'success');
+            showSnackbarMessage('Tags generated using server-side AI processing', 'success');
           } else if (isFallback) {
             showSnackbarMessage('Tags generated using fallback processing (AI unavailable)', 'info');
           } else {
-            showSnackbarMessage('Tags generated successfully!', 'success');
+            showSnackbarMessage(`Added ${newTags.length} AI-generated tags successfully!`, 'success');
           }
           
           console.log('Added new tags:', newTags);
@@ -773,7 +783,7 @@ const NoteEditor: React.FC = () => {
             </Tooltip>
             
             <Button
-              variant="outlined"
+              variant="contained"
               color="secondary"
               startIcon={isTaggingLoading ? <CircularProgress size={20} /> : <AutoAwesome />}
               onClick={() => {
