@@ -282,14 +282,16 @@ const Flashcards: React.FC = () => {
   }, [notesWithFlashcards, studyModeSearchQuery, state.notes]);
 
   useEffect(() => {
-    // Get notes from app context
-    setNotesToSelectFrom(state.notes.map(note => ({
-      id: note.id,
-      title: note.title,
-      content: note.content,
-      tags: note.tags
-    })));
-  }, [state.notes]);
+    // Only include notes that do NOT have flashcards
+    setNotesToSelectFrom(
+      state.notes.filter(note => !flashcards.some(card => card.noteId === note.id)).map(note => ({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        tags: note.tags
+      }))
+    );
+  }, [state.notes, flashcards]);
 
   // Reset current index when filtered cards change
   useEffect(() => {
@@ -531,12 +533,16 @@ const Flashcards: React.FC = () => {
         
         // Close the dialog
         setNoteToFlashcardsDialogOpen(false);
+        setAiDialogOpen(false);
         
         // Reset the current index to show the first card
         setCurrentIndex(0);
         
         // Ensure answer is hidden when starting study mode
         setIsFlipped(false);
+        
+        // Always navigate to the flashcards screen
+        navigate('/flashcards');
         
         // Switch to study mode tab to show the newly created flashcards
         setActiveTab('study' as TabValue);
@@ -694,7 +700,8 @@ const Flashcards: React.FC = () => {
 
   // Function to toggle answer visibility
   const handleToggleAnswer = () => {
-    setIsFlipped(!isFlipped);
+    // No longer needed, but keep the function to avoid breaking references
+    // setIsFlipped(!isFlipped);
   };
 
   // Replace the handleDeleteFlashcard function with a function that deletes all cards in a note
@@ -902,15 +909,14 @@ const Flashcards: React.FC = () => {
           <Typography variant="h6" gutterBottom>
             Flashcards by Note
           </Typography>
-          
           <Box 
             sx={{ 
-              maxHeight: '500px', // Set a max height that would fit 6 cards (2 rows of 3) before scrolling
+              maxHeight: '420px', // Increased height for more cards before scrolling
               overflowY: 'auto',
               pr: 1, // Add padding for scrollbar
               // Custom scrollbar styling
               '&::-webkit-scrollbar': {
-                width: '8px',
+                width: '10px',
                 backgroundColor: 'transparent',
               },
               '&::-webkit-scrollbar-track': {
@@ -919,33 +925,31 @@ const Flashcards: React.FC = () => {
                 margin: '4px 0',
               },
               '&::-webkit-scrollbar-thumb': {
-                background: alpha(theme.palette.primary.main, 0.2),
+                background: alpha(theme.palette.primary.main, 0.25),
                 borderRadius: '10px',
                 border: `2px solid transparent`,
                 backgroundClip: 'padding-box',
                 '&:hover': {
-                  background: alpha(theme.palette.primary.main, 0.3),
+                  background: alpha(theme.palette.primary.main, 0.35),
                   border: `2px solid transparent`,
                   backgroundClip: 'padding-box',
                 },
               },
               // Firefox scrollbar
               scrollbarWidth: 'thin',
-              scrollbarColor: `${alpha(theme.palette.primary.main, 0.2)} ${alpha(theme.palette.primary.main, 0.05)}`,
+              scrollbarColor: `${alpha(theme.palette.primary.main, 0.25)} ${alpha(theme.palette.primary.main, 0.05)}`,
             }}
           >
             <Grid container spacing={2}>
               {filteredNotesWithFlashcards.map(noteId => {
                 const noteCards = flashcardsByNote.get(noteId) || [];
                 const noteInfo = state.notes.find(n => n.id === noteId);
-                
                 if (!noteInfo) return null;
-                
                 return (
                   <Grid item xs={12} sm={6} md={4} key={noteId}>
                     <Card 
                       sx={{ 
-                        height: '180px', // Fixed height for all cards
+                        height: '210px', // Increased height for better content fit
                         display: 'flex',
                         flexDirection: 'column',
                         cursor: 'pointer',
@@ -954,7 +958,9 @@ const Flashcards: React.FC = () => {
                           transform: 'translateY(-4px)',
                           boxShadow: 3
                         },
-                        position: 'relative'
+                        position: 'relative',
+                        minWidth: 0,
+                        maxWidth: '100%',
                       }}
                       onClick={() => viewExistingFlashcards(noteId)}
                     >
@@ -1032,23 +1038,6 @@ const Flashcards: React.FC = () => {
         </Box>
       )}
 
-      {/* No flashcards available prompt - Only show when no notes with flashcards exist */}
-      {!focusedStudyMode && !notesToSelectFrom.length && !notesWithFlashcards.length && (
-        <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
-          <Typography variant="h5" gutterBottom>No Notes Available</Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: '600px', mx: 'auto' }}>
-            Create notes in the editor first, then come back to generate flashcards from them.
-          </Typography>
-          <Button
-            variant="contained"
-            color="primary"
-            onClick={() => navigate('/editor')}
-          >
-            Create a Note
-          </Button>
-        </Box>
-      )}
-
       {/* Empty state when there are notes but no selection yet and no existing flashcards */}
       {!focusedStudyMode && notesToSelectFrom.length > 0 && notesWithFlashcards.length === 0 && (
         <Box sx={{ 
@@ -1080,163 +1069,109 @@ const Flashcards: React.FC = () => {
       )}
 
       {/* Flashcard display with backdrop when in focused mode */}
-      {focusedStudyMode && (
+      {focusedStudyMode && filteredFlashcards.length > 0 && (
         <Box sx={{ 
-          position: 'relative', 
-          display: 'flex', 
-          justifyContent: 'center', 
-          mb: 4
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          bgcolor: 'rgba(0, 0, 0, 0.5)',
+          zIndex: 10,
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          flexDirection: 'column',
+          px: 2,
+          py: 4,
+          overflow: 'auto'
         }}>
-          <Box sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            bgcolor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 10,
-            backdropFilter: 'blur(5px)',
-            display: 'flex',
-            justifyContent: 'center',
+          <Box sx={{ 
+            width: '100%', 
+            maxWidth: '1200px', 
+            display: 'flex', 
+            flexDirection: 'column', 
             alignItems: 'center',
-            flexDirection: 'column',
-            px: 2
+            mb: 4
           }}>
-            <Box sx={{ 
-              width: '100%', 
-              maxWidth: 700, 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'center'
-            }}>
-              <Card 
-                  sx={{
-                  width: '100%', 
-                  height: '60vh',
-                  minHeight: 400,
-                  maxHeight: 600,
-                  boxShadow: 3,
-                  borderRadius: 2,
-                  position: 'relative',
-                  mb: 3,
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-                onClick={handleToggleAnswer}
-              >
-                <CardContent
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    p: 4,
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <Box sx={{ mb: 2 }}>
-                    <Typography variant="h4" component="div" align="center" gutterBottom>
-                      {filteredFlashcards[currentIndex]?.front}
-                    </Typography>
-                  </Box>
-                  
-                  {isFlipped && (
-                    <Box sx={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      flexGrow: 1,
-                      py: 3,
-                      px: 2,
-                      bgcolor: alpha(theme.palette.secondary.light, 0.05),
+            <Typography variant="h5" sx={{ color: 'white', mb: 3, fontWeight: 'bold' }}>
+              Studying: {getActiveNoteTitle() || 'Flashcards'}
+            </Typography>
+            
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              {filteredFlashcards.map((card) => (
+                <Grid item xs={12} sm={6} md={4} key={card.id}>
+                  <Card 
+                    sx={{
+                      height: '100%',
+                      minHeight: 200,
+                      boxShadow: 3,
                       borderRadius: 2,
-                      minHeight: '40%',
-                    }}>
-                      <Typography 
-                        variant="h5" 
-                        component="div" 
-                        align="center" 
-                        color="secondary.main"
-                      >
-                        {filteredFlashcards[currentIndex]?.back}
-                      </Typography>
-                    </Box>
-                  )}
-                  
-                  <Box sx={{ 
-                    position: 'absolute', 
-                    bottom: 16, 
-                    right: 16, 
-                    display: 'flex', 
-                    alignItems: 'center',
-                    opacity: 0.7
-                  }}>
-                    {!isFlipped ? (
-                      <Typography variant="caption">Click to show answer</Typography>
-                    ) : (
-                      <Typography variant="caption">Click again to hide answer</Typography>
-                    )}
-                  </Box>
-                </CardContent>
-              </Card>
+                      display: 'flex',
+                      flexDirection: 'column',
+                      p: 0,
+                      transition: 'transform 0.2s',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                      },
+                    }}
+                  >
+                    <CardContent
+                      sx={{
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        p: 3,
+                      }}
+                    >
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="h6" component="div" gutterBottom>
+                          {card.front}
+                        </Typography>
+                      </Box>
+                      
+                      <Divider sx={{ my: 2 }} />
+                      
+                      <Box sx={{ 
+                        display: 'flex', 
+                        flexGrow: 1,
+                        py: 2,
+                        bgcolor: alpha(theme.palette.secondary.light, 0.05),
+                        borderRadius: 2,
+                        p: 2,
+                      }}>
+                        <Typography 
+                          variant="body1" 
+                          component="div" 
+                          color="text.secondary"
+                        >
+                          {card.back}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+            
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button 
+                variant="contained"
+                color="secondary"
+                onClick={handleCloseFocusedMode}
+                startIcon={<CloseIcon />}
+              >
+                Close
+              </Button>
               
-              <Box sx={{ 
-                display: 'flex', 
-                justifyContent: 'center', 
-                alignItems: 'center', 
-                mb: 2, 
-                width: '100%'
-              }}>
-                <IconButton 
-                  onClick={handlePrevious} 
-                  disabled={currentIndex === 0}
-                  size="large"
-                  sx={{ 
-                    mx: 2,
-                    bgcolor: alpha(theme.palette.background.paper, 0.9),
-                    '&:hover': { bgcolor: theme.palette.background.paper },
-                    '&.Mui-disabled': { opacity: 0.5 }
-                  }}
-                >
-                  <PrevIcon />
-                </IconButton>
-                
-                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
-                  {currentIndex + 1} / {filteredFlashcards.length}
-                </Typography>
-                
-                <IconButton 
-                  onClick={handleNext} 
-                  disabled={currentIndex === filteredFlashcards.length - 1}
-                  size="large"
-                  sx={{ 
-                    mx: 2,
-                    bgcolor: alpha(theme.palette.background.paper, 0.9),
-                    '&:hover': { bgcolor: theme.palette.background.paper },
-                    '&.Mui-disabled': { opacity: 0.5 }
-                  }}
-                >
-                  <NextIcon />
-                </IconButton>
-              </Box>
-              
-              <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button 
-                  variant="contained"
-                  color="secondary"
-                  onClick={handleCloseFocusedMode}
-                  startIcon={<CloseIcon />}
-                >
-                  Close
-                </Button>
-                
-                <Button 
-                  variant="contained"
-                  startIcon={<DownloadIcon />}
-                  onClick={() => handleExportSelected([filteredFlashcards[currentIndex]])}
-                >
-                  Export to Anki
-                </Button>
-              </Box>
+              <Button 
+                variant="contained"
+                startIcon={<DownloadIcon />}
+                onClick={() => handleExportSelected(filteredFlashcards)}
+              >
+                Export to Anki
+              </Button>
             </Box>
           </Box>
         </Box>
@@ -1321,7 +1256,6 @@ const Flashcards: React.FC = () => {
                     height: '100%',
                     display: 'flex',
                     flexDirection: 'column',
-                    cursor: 'pointer',
                     transition: 'all 0.2s',
                     '&:hover': {
                       transform: 'translateY(-4px)',
@@ -1342,25 +1276,6 @@ const Flashcards: React.FC = () => {
                         borderColor: `transparent ${theme.palette.secondary.main} transparent transparent`,
                       }
                     })
-                  }}
-                  onClick={() => {
-                    // Find the index of this card in the filtered list
-                    const index = filteredFlashcards.findIndex(c => c.id === card.id);
-                    setCurrentIndex(index);
-                    // Hide answer initially, require user to click
-                    setIsFlipped(false);
-                    setActiveTab('study');
-                    
-                    // If card has noteId, set it as active
-                    if (card.noteId) {
-                      setActiveNoteId(card.noteId);
-                      setViewMode('byNote');
-                    } else {
-                      setViewMode('all');
-                    }
-                    
-                    // Switch to focused study mode
-                    setFocusedStudyMode(true);
                   }}
                 >
                   <CardContent sx={{ flexGrow: 1 }}>
@@ -1396,17 +1311,27 @@ const Flashcards: React.FC = () => {
                   </CardContent>
                   
                   <Box sx={{ p: 2, pt: 0 }}>
-                    <Typography 
-                      variant="caption" 
-                      color="text.secondary"
-                      sx={{ 
-                        display: 'block', 
-                        textAlign: 'right',
-                        mt: 1 
-                      }}
-                    >
-                      {new Date(card.createdAt).toLocaleDateString()}
-                    </Typography>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography 
+                        variant="caption" 
+                        color="text.secondary"
+                        sx={{ 
+                          display: 'block',
+                          mt: 1 
+                        }}
+                      >
+                        {new Date(card.createdAt).toLocaleDateString()}
+                      </Typography>
+                      
+                      <IconButton
+                        size="small"
+                        color="error"
+                        onClick={() => handleDeleteFlashcard(card.id)}
+                        aria-label="Delete flashcard"
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
                   </Box>
                 </Card>
               </Grid>
@@ -1440,7 +1365,7 @@ const Flashcards: React.FC = () => {
   );
 
   return (
-    <Box sx={{ px: { xs: 1, sm: 2 }, py: 2, maxWidth: '1200px', margin: '0 auto' }}>
+    <Box sx={{ px: { xs: 1, sm: 2 }, py: 2, maxWidth: '1400px', margin: '0 auto' }}>
       <Box sx={{ 
         display: 'flex', 
         justifyContent: 'space-between', 
