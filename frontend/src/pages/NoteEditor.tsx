@@ -86,8 +86,17 @@ const NoteEditor: React.FC = () => {
     setSnackbarMessage(message);
     setSnackbarSeverity(severity);
     setShowSnackbar(true);
+    
+    // Set redirection flag if needed
     if (shouldRedirect) {
       setRedirectAfterSave(true);
+      
+      // For success messages, always redirect to dashboard
+      if (severity === 'success') {
+        setTimeout(() => {
+          navigate('/dashboard');
+        }, 1500);
+      }
     }
   };
   
@@ -128,21 +137,30 @@ const NoteEditor: React.FC = () => {
   useEffect(() => {
     if (redirectAfterSave && !isLoading) {
       const timer = setTimeout(() => {
-        navigate('/dashboard');
+        window.location.href = '/dashboard';
       }, 1500);
       
       return () => clearTimeout(timer);
     }
-  }, [redirectAfterSave, isLoading, navigate]);
+  }, [redirectAfterSave, isLoading]);
 
   const autoGenerateTags = async (text: string) => {
-    if (text.trim().length < 50) return;
+    if (text.trim().length < 50) {
+      showSnackbarMessage('Add more content before generating tags', 'info');
+      return;
+    }
     
     try {
       setIsTaggingLoading(true);
-      const response = await api.tag(text);
+      showSnackbarMessage('Analyzing content with AI model...', 'info');
+      const response = await api.tag(text, aiModel);
       
       if (response.data?.tags) {
+        // Check what model was used
+        const modelUsed = response.data.model_used || 'unknown';
+        const isOpenRouter = modelUsed.includes('openrouter') || modelUsed.includes('llama3');
+        const isFallback = modelUsed === 'client-side-fallback';
+        
         // Filter out tags that are too short or already included
         const newTags = response.data.tags
           .filter(tag => 
@@ -155,13 +173,104 @@ const NoteEditor: React.FC = () => {
           
         if (newTags.length > 0) {
           setTags(prevTags => [...new Set([...prevTags, ...newTags])]);
+          
+          // Show appropriate message based on what model was used
+          if (isOpenRouter) {
+            showSnackbarMessage('Tags generated using AI', 'success');
+          } else if (isFallback) {
+            showSnackbarMessage('Tags generated using local processing (server unavailable)', 'success');
+          } else {
+            showSnackbarMessage('Tags automatically generated!', 'success');
+          }
+        } else {
+          showSnackbarMessage('No new tags could be generated', 'info');
+        }
+      } else if (response.error) {
+        // Try a simplified extraction directly from the text as a last resort
+        const simpleTags = extractSimpleTags(text);
+        
+        if (simpleTags.length > 0) {
+          setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
+          showSnackbarMessage('Tags generated with basic extraction (API error)', 'warning');
+        } else {
+          showSnackbarMessage(`Error generating tags: ${response.error}`, 'error');
         }
       }
     } catch (error) {
       console.error('Error generating tags:', error);
+      
+      // Last resort - try to extract something
+      const simpleTags = extractSimpleTags(text);
+      if (simpleTags.length > 0) {
+        setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
+        showSnackbarMessage('Tags generated with basic extraction (error recovery)', 'warning');
+      } else {
+        showSnackbarMessage('Failed to generate tags', 'error');
+      }
     } finally {
       setIsTaggingLoading(false);
     }
+  };
+
+  // Ultra-simple tag extraction as a last resort if all else fails
+  const extractSimpleTags = (text: string): string[] => {
+    // Get the title words first as they're highly relevant
+    const titleWords = title.toLowerCase().split(/\s+/)
+      .map(word => word.replace(/[^\w]/g, ''))
+      .filter(word => word.length > 3);
+    
+    // Simple content processing - remove HTML, lowercase, split by spaces
+    const cleanText = text.replace(/<[^>]*>/g, ' ').toLowerCase();
+    const words = cleanText.split(/\s+/);
+    
+    // Count word frequency
+    const wordCount: Record<string, number> = {};
+    words.forEach(word => {
+      // Clean the word
+      const cleanWord = word.replace(/[^\w]/g, '');
+      if (cleanWord.length > 3) {
+        wordCount[cleanWord] = (wordCount[cleanWord] || 0) + 1;
+      }
+    });
+    
+    // Domain-specific keywords that might be relevant for healthcare content
+    const healthcareKeywords = [
+      'health', 'medical', 'clinical', 'patient', 'doctor', 'hospital', 'care', 'treatment',
+      'diagnosis', 'therapy', 'disease', 'medicine', 'healthcare', 'technology', 'artificial',
+      'intelligence', 'data', 'research', 'algorithm', 'diagnostic', 'image', 'analysis',
+      'radiology', 'pathology', 'prediction', 'prevention', 'monitoring', 'screening', 'workflow'
+    ];
+    
+    // Filter common words
+    const commonWords = [
+      'this', 'that', 'these', 'those', 'with', 'from', 'have', 'will', 'they', 'their', 'there',
+      'about', 'which', 'what', 'when', 'where', 'would', 'could', 'should', 'than', 'then',
+      'some', 'such', 'same', 'more', 'most', 'other', 'another', 'being', 'also', 'very',
+      'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under'
+    ];
+    
+    // Extract most frequent terms
+    const frequentTerms = Object.keys(wordCount)
+      .filter(word => !commonWords.includes(word) && wordCount[word] > 1)
+      .sort((a, b) => wordCount[b] - wordCount[a])
+      .slice(0, 5);
+    
+    // Prioritize domain-specific keywords if they appear in the text
+    const domainKeywords = healthcareKeywords.filter(keyword => 
+      wordCount[keyword] && wordCount[keyword] > 0
+    ).slice(0, 3);
+    
+    // Combine title words, domain keywords, and frequent terms, prioritizing in that order
+    const allTags = [
+      ...titleWords,                             // Title words first
+      ...domainKeywords,                         // Domain keywords next
+      ...frequentTerms.filter(term =>            // Then frequent terms not already included
+        !titleWords.includes(term) && 
+        !domainKeywords.includes(term)
+      )
+    ].slice(0, 5);  // Take up to 5 tags
+    
+    return [...new Set(allTags)]; // Remove any duplicates
   };
 
   // New function to process content with chatbot
@@ -227,14 +336,56 @@ const NoteEditor: React.FC = () => {
     dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
     
     // Show success message and close dialog
-    showSnackbarMessage('Flashcards saved successfully!', 'success');
+    showSnackbarMessage('Flashcards saved successfully!', 'success', false);
     setChatbotOpen(false);
+    
+    // Direct navigation after a short delay to show the message
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 1500);
   };
 
-  const handleAddTag = () => {
+  const handleAddTag = async () => {
+    // If a tag was manually entered, add it
     if (currentTag && !tags.includes(currentTag)) {
       setTags([...tags, currentTag]);
       setCurrentTag('');
+      return;
+    }
+    
+    // If no tag was manually entered, generate tags from content
+    if (content.trim().length < 50) {
+      showSnackbarMessage('Add more content before generating tags', 'info');
+      return;
+    }
+    
+    try {
+      setIsTaggingLoading(true);
+      const response = await api.tag(content, aiModel);
+      
+      if (response.data?.tags) {
+        // Filter out tags that are too short or already included
+        const newTags = response.data.tags
+          .filter(tag => 
+            tag.length > 2 && 
+            !tags.includes(tag) && 
+            !tag.includes('.') && 
+            !tag.includes(',')
+          )
+          .slice(0, 3); // Limit to 3 new tags
+          
+        if (newTags.length > 0) {
+          setTags(prevTags => [...new Set([...prevTags, ...newTags])]);
+          showSnackbarMessage('Tags automatically generated!', 'success');
+        } else {
+          showSnackbarMessage('No new tags could be generated', 'info');
+        }
+      }
+    } catch (error) {
+      console.error('Error generating tags:', error);
+      showSnackbarMessage('Failed to generate tags', 'error');
+    } finally {
+      setIsTaggingLoading(false);
     }
   };
 
@@ -277,8 +428,8 @@ const NoteEditor: React.FC = () => {
         // Update in state context
         dispatch({ type: 'UPDATE_NOTE', payload: updatedNote });
         
-        // Show success message and redirect
-        showSnackbarMessage('Note updated successfully!', 'success', true);
+        // Show success message
+        showSnackbarMessage('Note updated successfully!', 'success', false);
       } else {
         // Create new note object
         const note = {
@@ -294,9 +445,14 @@ const NoteEditor: React.FC = () => {
         // Save to state context
         dispatch({ type: 'ADD_NOTE', payload: note });
         
-        // Show success message and redirect
-        showSnackbarMessage('Note saved successfully!', 'success', true);
+        // Show success message
+        showSnackbarMessage('Note saved successfully!', 'success', false);
       }
+      
+      // Direct navigation after a short delay to show the message
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1500);
     } catch (error) {
       console.error('Error saving note:', error);
       showSnackbarMessage('Error saving note', 'error');
@@ -307,31 +463,33 @@ const NoteEditor: React.FC = () => {
 
   const handleDiscard = () => {
     if (noteId) {
-      // If editing an existing note, just navigate back
+      // If editing an existing note, navigate back
       showSnackbarMessage('Edit cancelled', 'info');
-      navigate('/dashboard');
+      window.location.href = '/dashboard';
     } else {
       // If creating a new note, clear the form
       setTitle('');
       setContent('');
       setTags([]);
       
-      // This will trigger the useEffect to update the editor
+      // Show message and then navigate
       showSnackbarMessage('Note discarded', 'info');
+      // Direct navigation after a short delay
+      setTimeout(() => {
+        window.location.href = '/dashboard';
+      }, 1500);
     }
   };
 
   const navigateBack = () => {
-    navigate('/dashboard');
+    window.location.href = '/dashboard';
   };
 
   const handleContentChange = (html: string) => {
+    console.log('NoteEditor received content update:', html.substring(0, 50) + '...');
     setContent(html);
     
-    // Auto-generate tags if the content is long enough (and we don't have many tags yet)
-    if (html.length > 200 && tags.length < 3 && !isTaggingLoading) {
-      autoGenerateTags(html);
-    }
+    // Remove automatic tag generation when content changes
   };
 
   return (
@@ -340,34 +498,17 @@ const NoteEditor: React.FC = () => {
         <IconButton onClick={navigateBack}>
           <ArrowBack />
         </IconButton>
-        <Typography variant="h4" component="h1">
+        <Typography variant="h4" component="h1" sx={{ flexGrow: 1, textAlign: 'center' }}>
           {noteId ? 'Edit Note' : (title ? title : 'New Note')}
         </Typography>
-        <Box>
-          <Tooltip title="AI Assistant">
-            <IconButton 
-              onClick={processChatbot}
-              disabled={isChatbotLoading || content.length < 50}
-              color="primary"
-            >
-              <PsychologyIcon />
-            </IconButton>
-          </Tooltip>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<SaveIcon />}
-            onClick={handleSave}
-            disabled={isLoading}
-            sx={{ ml: 1 }}
-          >
-            {isLoading ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              noteId ? 'Update' : 'Save'
-            )}
-          </Button>
-        </Box>
+        <IconButton 
+          onClick={processChatbot}
+          disabled={isChatbotLoading || content.length < 50}
+          color="primary"
+          sx={{ visibility: 'visible' }} // keeping this visible for balance
+        >
+          <PsychologyIcon />
+        </IconButton>
       </Box>
 
       {/* File upload button and title input */}
@@ -508,6 +649,7 @@ const NoteEditor: React.FC = () => {
             />
           ) : (
             <RichTextEditor
+              key={noteId || 'new-note'}
               initialContent={content}
               onChange={handleContentChange}
               placeholder="Start writing your note..."
@@ -522,7 +664,13 @@ const NoteEditor: React.FC = () => {
         <Typography variant="h6" gutterBottom>
           Tags
           {isTaggingLoading && (
-            <CircularProgress size={16} sx={{ ml: 1, verticalAlign: 'middle' }} />
+            <Chip 
+              label="Generating tags..." 
+              size="small" 
+              color="secondary"
+              icon={<CircularProgress size={16} />}
+              sx={{ ml: 2, verticalAlign: 'middle' }}
+            />
           )}
         </Typography>
         <Paper sx={{ p: 2 }}>
@@ -553,23 +701,32 @@ const NoteEditor: React.FC = () => {
                 }
               }}
             />
-            <IconButton 
-              onClick={handleAddTag} 
-              color="primary"
-              disabled={!currentTag.trim()}
-            >
-              <AddIcon />
-            </IconButton>
+            <Tooltip title={currentTag.trim() ? "Add Tag" : "Generate Tags from Content"}>
+              <IconButton 
+                onClick={handleAddTag} 
+                color="primary"
+                disabled={(!currentTag.trim() && content.length < 50) || isTaggingLoading}
+              >
+                {isTaggingLoading ? <CircularProgress size={24} /> : <AddIcon />}
+              </IconButton>
+            </Tooltip>
             
             <Button
               variant="outlined"
               color="secondary"
-              startIcon={<AutoAwesome />}
-              onClick={() => autoGenerateTags(content)}
+              startIcon={isTaggingLoading ? <CircularProgress size={20} /> : <AutoAwesome />}
+              onClick={() => {
+                // Show a more informative message in the snackbar before starting the process
+                if (content.length < 50) {
+                  showSnackbarMessage('Please add more content before generating tags', 'info');
+                  return;
+                }
+                autoGenerateTags(content);
+              }}
               disabled={isTaggingLoading || content.length < 50}
               sx={{ ml: 1 }}
             >
-              Auto-Generate Tags
+              {isTaggingLoading ? 'Generating...' : 'AI-Generate Tags'}
             </Button>
           </Box>
           
@@ -619,7 +776,7 @@ const NoteEditor: React.FC = () => {
               {isLoading ? (
                 <CircularProgress size={24} color="inherit" />
               ) : (
-                noteId ? 'Update' : 'Save Note'
+                'Save Note'
               )}
             </Button>
       </Box>
@@ -739,14 +896,21 @@ const NoteEditor: React.FC = () => {
 
       <Snackbar
         open={showSnackbar}
-        autoHideDuration={6000}
+        autoHideDuration={3000}
         onClose={() => setShowSnackbar(false)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{
+          '& .MuiPaper-root': {
+            minWidth: '300px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+          }
+        }}
       >
         <Alert 
           onClose={() => setShowSnackbar(false)} 
           severity={snackbarSeverity}
-          sx={{ width: '100%' }}
+          variant="filled"
+          sx={{ width: '100%', fontSize: '0.95rem' }}
         >
           {snackbarMessage}
         </Alert>

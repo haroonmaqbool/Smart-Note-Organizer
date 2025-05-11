@@ -31,26 +31,62 @@ mock_database = {
 # Simple search score (checks if query in title/content/summary/tags)
 def calculate_search_score(note_dict, query):
     score = 0
-    if query in note_dict.get("title", "").lower():
+    
+    # Case-insensitive title match
+    title = note_dict.get("title", "").lower()
+    if query in title:
         score += 5
+        # Give extra points for exact title matches
+        if query == title:
+            score += 3
+    
+    # Content and summary matching
     if query in note_dict.get("content", "").lower():
         score += 3
     if query in note_dict.get("summary", "").lower():
         score += 2
-    if any(query in tag.lower() for tag in note_dict.get("tags", [])):
-        score += 1
+    
+    # Tag matching
+    for tag in note_dict.get("tags", []):
+        tag_lower = tag.lower()
+        if query == tag_lower:
+            score += 3  # Exact tag match
+        elif query in tag_lower:
+            score += 1  # Partial tag match
+    
     return score
 
 def calculate_flashcard_score(card_dict, query):
     score = 0
-    if query in card_dict.get("title", "").lower():
-        score += 3
+    match_info = {"title_match": False, "tag_match": False}
+    
+    # Case-insensitive title match
+    title = card_dict.get("title", "").lower()
+    if query == title:
+        score += 5  # Exact title match
+        match_info["title_match"] = True
+    elif query in title:
+        score += 3  # Partial title match
+        match_info["title_match"] = True
+    
+    # Question and answer matching
     if query in card_dict.get("question", "").lower():
         score += 2
     if query in card_dict.get("answer", "").lower():
         score += 2
-    if any(query in tag.lower() for tag in card_dict.get("tags", [])):
-        score += 1
+    
+    # Tag matching - both exact and partial matches
+    for tag in card_dict.get("tags", []):
+        tag_lower = tag.lower()
+        if query == tag_lower:
+            score += 3  # Exact tag match
+            match_info["tag_match"] = True
+        elif query in tag_lower:
+            score += 1  # Partial tag match
+            match_info["tag_match"] = True
+    
+    # Return both score and match info
+    card_dict["match_info"] = match_info
     return score
 
 # AI model name stub

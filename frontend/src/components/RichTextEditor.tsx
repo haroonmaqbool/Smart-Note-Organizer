@@ -184,6 +184,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const firstMount = useRef(true);
   useEffect(() => {
     if (editorRef.current) {
+      console.log('Initializing editor with content:', initialContent);
       // Create a temporary div to sanitize the HTML
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = initialContent;
@@ -255,6 +256,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const handleContentChange = () => {
     if (editorRef.current) {
       editorContentRef.current = editorRef.current.innerHTML;
+      // Call onChange immediately when content changes to update parent component
+      console.log('Content changed to:', editorRef.current.innerHTML);
+      onChange(editorRef.current.innerHTML);
     }
   };
 
@@ -1150,6 +1154,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         contentEditable
         suppressContentEditableWarning
         onInput={handleContentChange}
+        onChange={handleContentChange}
+        onKeyUp={handleContentChange}
+        onPaste={handleContentChange}
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
         className="rich-text-editor-content"

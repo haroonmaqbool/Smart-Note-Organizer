@@ -17,15 +17,19 @@ import {
   IconButton,
   Paper,
   InputAdornment,
+  Tooltip,
 } from '@mui/material';
 import { 
   Search as SearchIcon, 
   Note as NoteIcon, 
   QuizOutlined as FlashcardIcon,
   Clear as ClearIcon,
+  Title as TitleIcon,
+  Tag as TagIcon,
 } from '@mui/icons-material';
-import { api, SearchResultItem } from '../services/api';
-import { useNavigate } from 'react-router-dom';
+import { SearchResultItem } from '../services/api';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
 
 // Tab interface to enable filtering by content type
 interface TabPanelProps {
@@ -51,12 +55,25 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const Search: React.FC = () => {
+  const { state } = useApp();
+  const { flashcards, notes } = state;
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [tabValue, setTabValue] = useState(0);
-  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Check for search query in URL parameters
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const queryParam = searchParams.get('q');
+    
+    if (queryParam) {
+      setSearchQuery(queryParam);
+      performLocalSearch(queryParam);
+    }
+  }, [location.search]);
 
   // Handle tab change
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
@@ -67,35 +84,123 @@ const Search: React.FC = () => {
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
       if (searchQuery.trim()) {
-        performSearch(searchQuery);
+        performLocalSearch(searchQuery);
+        
+        // Update URL with search query without reloading the page
+        const url = new URL(window.location.href);
+        url.searchParams.set('q', searchQuery);
+        window.history.pushState({}, '', url.toString());
       } else {
         setResults([]);
+        
+        // Remove query parameter from URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('q');
+        window.history.pushState({}, '', url.toString());
       }
-    }, 500); // 500ms debounce
+    }, 300); // 300ms debounce
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, flashcards, notes]);
 
-  // Search function
-  const performSearch = async (query: string) => {
+  // Local search function
+  const performLocalSearch = (query: string) => {
     setIsLoading(true);
-    setError(null);
     
     try {
-      const response = await api.globalSearch(query);
+      const searchResults: SearchResultItem[] = [];
+      const queryLower = query.toLowerCase();
       
-      if (response.error) {
-        setError(response.error);
-        setResults([]);
-      } else if (response.data) {
-        setResults(response.data.results);
-      }
-    } catch (err) {
-      setError('Failed to perform search. Please try again later.');
-      console.error('Search error:', err);
+      // Search through flashcards
+      flashcards.forEach(card => {
+        const titleMatch = card.front.toLowerCase().includes(queryLower);
+        const contentMatch = card.back.toLowerCase().includes(queryLower);
+        const tagMatch = card.tags.some(tag => tag.toLowerCase().includes(queryLower));
+        
+        if (titleMatch || contentMatch || tagMatch) {
+          searchResults.push({
+            id: card.id,
+            title: card.front,
+            question: card.front,
+            answer: card.back,
+            tags: card.tags,
+            type: 'flashcard',
+            matchScore: calculateMatchScore(card.front, card.back, card.tags, queryLower),
+            match_info: {
+              title_match: titleMatch,
+              tag_match: tagMatch
+            }
+          });
+        }
+      });
+      
+      // Search through notes
+      notes.forEach(note => {
+        const titleMatch = note.title.toLowerCase().includes(queryLower);
+        const contentMatch = note.content.toLowerCase().includes(queryLower);
+        const tagMatch = note.tags.some(tag => tag.toLowerCase().includes(queryLower));
+        
+        if (titleMatch || contentMatch || tagMatch) {
+          searchResults.push({
+            id: note.id,
+            title: note.title,
+            summary: note.summary || extractSummary(note.content),
+            tags: note.tags,
+            type: 'note',
+            matchScore: calculateMatchScore(note.title, note.content, note.tags, queryLower),
+            match_info: {
+              title_match: titleMatch,
+              tag_match: tagMatch
+            }
+          });
+        }
+      });
+      
+      // Sort results by match score (descending)
+      searchResults.sort((a, b) => b.matchScore - a.matchScore);
+      
+      setResults(searchResults);
+    } catch (error) {
+      console.error('Local search error:', error);
     } finally {
       setIsLoading(false);
     }
+  };
+  
+  // Calculate match score for sorting results
+  const calculateMatchScore = (title: string, content: string, tags: string[], query: string): number => {
+    let score = 0;
+    
+    // Title match (highest priority)
+    if (title.toLowerCase() === query) {
+      score += 10; // Exact title match
+    } else if (title.toLowerCase().includes(query)) {
+      score += 5; // Partial title match
+    }
+    
+    // Content match
+    if (content.toLowerCase().includes(query)) {
+      score += 3;
+    }
+    
+    // Tag match
+    for (const tag of tags) {
+      if (tag.toLowerCase() === query) {
+        score += 4; // Exact tag match
+      } else if (tag.toLowerCase().includes(query)) {
+        score += 2; // Partial tag match
+      }
+    }
+    
+    return score;
+  };
+
+  // Helper function to extract a summary from note content (stripping HTML)
+  const extractSummary = (content: string): string => {
+    // Remove HTML tags
+    const plainText = content.replace(/<[^>]*>/g, '');
+    // Return first 100 characters
+    return plainText.substring(0, 100) + (plainText.length > 100 ? '...' : '');
   };
 
   // Filter results based on selected tab
@@ -126,13 +231,13 @@ const Search: React.FC = () => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom>
-        Global Search
+        Search Notes & Flashcards
       </Typography>
 
       <Paper elevation={3} sx={{ mb: 3, p: 1 }}>
         <TextField
           fullWidth
-          placeholder="Search across notes, tags, and flashcards..."
+          placeholder="Search your notes and flashcards by title, content, or tags..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
@@ -143,7 +248,7 @@ const Search: React.FC = () => {
             ),
             endAdornment: searchQuery && (
               <InputAdornment position="end">
-                <IconButton onClick={handleClearSearch} edge="end" size="small">
+                <IconButton onClick={handleClearSearch} edge="end" size="small" aria-label="Clear search">
                   <ClearIcon />
                 </IconButton>
               </InputAdornment>
@@ -162,10 +267,6 @@ const Search: React.FC = () => {
         <Box display="flex" justifyContent="center" my={4}>
           <CircularProgress />
         </Box>
-      ) : error ? (
-        <Typography color="error" align="center" sx={{ my: 4 }}>
-          {error}
-        </Typography>
       ) : filteredResults.length > 0 ? (
         <Box>
           <Tabs
@@ -194,7 +295,7 @@ const Search: React.FC = () => {
         <Typography color="text.secondary" align="center" sx={{ my: 8 }}>
           {searchQuery
             ? 'No results found. Try different keywords or check your spelling.'
-            : 'Start typing to search your notes, tags, and flashcards'}
+            : 'Start typing to search your notes and flashcards by title, content, or tags.'}
         </Typography>
       )}
     </Box>
@@ -228,6 +329,28 @@ const ResultsList: React.FC<{
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <Typography variant="subtitle1" component="div" fontWeight={500}>
                     {result.title}
+                    {result.match_info && (
+                      <Box component="span" ml={1}>
+                        {result.match_info.title_match && (
+                          <Tooltip title="Title match">
+                            <TitleIcon 
+                              fontSize="small" 
+                              color="primary" 
+                              sx={{ verticalAlign: 'middle', ml: 0.5 }}
+                            />
+                          </Tooltip>
+                        )}
+                        {result.match_info.tag_match && (
+                          <Tooltip title="Tag match">
+                            <TagIcon 
+                              fontSize="small" 
+                              color="secondary" 
+                              sx={{ verticalAlign: 'middle', ml: 0.5 }}
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
+                    )}
                   </Typography>
                   <Chip 
                     label={result.type === 'note' ? 'Note' : 'Flashcard'} 
@@ -251,14 +374,14 @@ const ResultsList: React.FC<{
                 )}
                 
                 {result.tags && result.tags.length > 0 && (
-                  <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 0.5 }}>
-                    {result.tags.map((tag) => (
-                      <Chip
-                        key={tag}
-                        label={tag}
-                        size="small"
+                  <Stack direction="row" spacing={1} sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
+                    {result.tags.map((tag, i) => (
+                      <Chip 
+                        key={i} 
+                        label={tag} 
+                        size="small" 
+                        color="default" 
                         variant="outlined"
-                        sx={{ mr: 0.5, mb: 0.5 }}
                       />
                     ))}
                   </Stack>

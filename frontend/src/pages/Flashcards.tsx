@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Card,
@@ -26,7 +26,10 @@ import {
   Input,
   InputLabel,
   FormControl,
-  Tooltip
+  Tooltip,
+  InputAdornment,
+  Backdrop,
+  Fade
 } from '@mui/material';
 import {
   NavigateNext as NextIcon,
@@ -40,7 +43,12 @@ import {
   Image as ImageIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
-  Delete as DeleteIcon
+  Delete as DeleteIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon,
+  Folder as FolderIcon,
+  FlipToBack as FlipIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useNavigate } from 'react-router-dom';
@@ -60,24 +68,19 @@ interface Flashcard {
 // Define tab values
 type TabValue = 'study' | 'history';
 
+// Define flashcard viewing modes
+type ViewMode = 'all' | 'byNote' | 'focused';
+
 const Flashcards: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning' });
+  const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning', showViewButton: false });
   const [activeTab, setActiveTab] = useState<TabValue>('study');
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [selectedFlashcard, setSelectedFlashcard] = useState<Flashcard | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedFlashcards, setGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
-  const [imageDialogOpen, setImageDialogOpen] = useState(false);
-  const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [extractedText, setExtractedText] = useState('');
-  const [imageGeneratedFlashcards, setImageGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
-  const [imageTags, setImageTags] = useState<string[]>([]);
-  const [imageTitle, setImageTitle] = useState('');
-  const [availableModel, setAvailableModel] = useState<AIModel>('llama');
   const [openCreateForm, setOpenCreateForm] = useState(false);
   const [newFlashcard, setNewFlashcard] = useState({
     front: '',
@@ -85,31 +88,92 @@ const Flashcards: React.FC = () => {
     tags: [] as string[],
   });
   const [currentNewTag, setCurrentNewTag] = useState('');
-  const [textDialogOpen, setTextDialogOpen] = useState(false);
-  const [userInputText, setUserInputText] = useState('');
-  const [isProcessingText, setIsProcessingText] = useState(false);
-  const [textGeneratedFlashcards, setTextGeneratedFlashcards] = useState<ApiFlashcard[]>([]);
-  const [textTitle, setTextTitle] = useState('');
+  
+  // Add search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  
+  // Note-related state
+  const [selectedNote, setSelectedNote] = useState<null | { id: string, title: string, content: string, tags: string[] }>(null);
+  const [isGeneratingFromNote, setIsGeneratingFromNote] = useState(false);
+  const [noteToFlashcardsDialogOpen, setNoteToFlashcardsDialogOpen] = useState(false);
+  const [notesToSelectFrom, setNotesToSelectFrom] = useState<Array<{ id: string, title: string, content: string, tags: string[] }>>([]);
+  
+  // New state for viewing modes
+  const [viewMode, setViewMode] = useState<ViewMode>('all');
+  const [activeNoteId, setActiveNoteId] = useState<string | null>(null);
+  const [focusedStudyMode, setFocusedStudyMode] = useState(false);
   
   // Get flashcards from context
   const { state, dispatch } = useApp();
   const { flashcards } = state;
 
-  useEffect(() => {
-    // Check which AI models are available
-    const checkAvailableModels = async () => {
-      const health = await api.healthCheck();
-      if (health && health.ai_model) {
-        setAvailableModel(health.ai_model as AIModel);
-      }
-    };
+  // Filter flashcards based on search query and active note
+  const filteredFlashcards = useMemo(() => {
+    let cards = [...flashcards];
     
-    checkAvailableModels();
-  }, []);
+    // Filter by active note if in byNote mode
+    if (viewMode === 'byNote' && activeNoteId) {
+      cards = cards.filter(card => card.noteId === activeNoteId);
+    }
+    
+    // Filter by search query regardless of mode
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      cards = cards.filter(card => {
+        const frontMatch = card.front.toLowerCase().includes(query);
+        const backMatch = card.back.toLowerCase().includes(query);
+        const tagMatch = card.tags.some(tag => tag.toLowerCase().includes(query));
+        
+        return frontMatch || backMatch || tagMatch;
+      });
+    }
+    
+    return cards;
+  }, [flashcards, searchQuery, viewMode, activeNoteId]);
+
+  // Group flashcards by note for easier navigation
+  const flashcardsByNote = useMemo(() => {
+    const byNote = new Map<string, Flashcard[]>();
+    
+    flashcards.forEach(card => {
+      if (card.noteId) {
+        const existingCards = byNote.get(card.noteId) || [];
+        byNote.set(card.noteId, [...existingCards, card]);
+      }
+    });
+    
+    return byNote;
+  }, [flashcards]);
+  
+  // Get available note IDs with flashcards
+  const notesWithFlashcards = useMemo(() => {
+    return Array.from(flashcardsByNote.keys());
+  }, [flashcardsByNote]);
+
+  useEffect(() => {
+    // Get notes from app context
+    setNotesToSelectFrom(state.notes.map(note => ({
+      id: note.id,
+      title: note.title,
+      content: note.content,
+      tags: note.tags
+    })));
+  }, [state.notes]);
+
+  // Reset current index when filtered cards change
+  useEffect(() => {
+    if (currentIndex >= filteredFlashcards.length) {
+      setCurrentIndex(Math.max(0, filteredFlashcards.length - 1));
+    }
+    // Hide answer when changing cards or filters
+    setIsFlipped(false);
+  }, [filteredFlashcards, currentIndex]);
 
   const handleNext = () => {
-    if (currentIndex < flashcards.length - 1) {
+    if (currentIndex < filteredFlashcards.length - 1) {
       setCurrentIndex(currentIndex + 1);
+      // Hide answer when navigating to next card
       setIsFlipped(false);
     }
   };
@@ -117,6 +181,7 @@ const Flashcards: React.FC = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
+      // Hide answer when navigating to previous card
       setIsFlipped(false);
     }
   };
@@ -144,7 +209,8 @@ const Flashcards: React.FC = () => {
     setNotification({
       open: true,
       message: 'Flashcards exported successfully!',
-      severity: 'success'
+      severity: 'success',
+      showViewButton: true
     });
   };
 
@@ -158,56 +224,109 @@ const Flashcards: React.FC = () => {
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: TabValue) => {
     setActiveTab(newValue);
+    // Reset view mode when changing tabs
+    setViewMode('all');
+    setActiveNoteId(null);
+    setFocusedStudyMode(false);
   };
 
-  const handleGenerateAIFlashcards = async (flashcard: Flashcard) => {
-    setSelectedFlashcard(flashcard);
-    setAiDialogOpen(true);
-    setIsGenerating(true);
+  // Function to check if a note already has flashcards
+  const noteHasFlashcards = (noteId: string): boolean => {
+    return notesWithFlashcards.includes(noteId);
+  };
+  
+  // Function to view existing flashcards for a note
+  const viewExistingFlashcards = (noteId: string) => {
+    setActiveNoteId(noteId);
+    setViewMode('byNote');
+    setActiveTab('study');
+    setCurrentIndex(0);
+    // Hide answer initially
+    setIsFlipped(false);
+    setFocusedStudyMode(true);
+    
+    // Find the corresponding note
+    const noteInfo = notesToSelectFrom.find(note => note.id === noteId);
+    if (noteInfo) {
+      setSelectedNote(noteInfo);
+    }
+    
+    // Close any open dialogs
+    setAiDialogOpen(false);
+    setNoteToFlashcardsDialogOpen(false);
+  };
+
+  // Add a function to generate flashcards from a note
+  const handleGenerateFromNote = async (note: { id: string, title: string, content: string, tags: string[] }) => {
+    // Check if flashcards already exist for this note
+    if (noteHasFlashcards(note.id)) {
+      // If yes, just switch to viewing those flashcards
+      viewExistingFlashcards(note.id);
+      
+      setNotification({
+        open: true,
+        message: 'Showing existing flashcards for this note',
+        severity: 'info',
+        showViewButton: false
+      });
+      
+      return;
+    }
+    
+    // If no existing flashcards, generate new ones
+    setSelectedNote(note);
+    setNoteToFlashcardsDialogOpen(true);
+    setIsGeneratingFromNote(true);
     setGeneratedFlashcards([]);
 
     try {
-      // Use the content of the flashcard to generate new flashcards
-      const content = flashcard.front + ' ' + flashcard.back;
-      const result = await api.chatbot(content, '', flashcard.tags);
+      // Use the content of the note to generate flashcards
+      const result = await api.chatbot(note.content, note.title, note.tags);
 
       if (result.error) {
         setNotification({
           open: true,
           message: `Error generating flashcards: ${result.error}`,
-          severity: 'error'
+          severity: 'error',
+          showViewButton: false
         });
         return;
       }
 
-      if (result.data && result.data.flashcards) {
+      if (result.data && result.data.flashcards && result.data.flashcards.length > 0) {
         setGeneratedFlashcards(result.data.flashcards);
       } else {
         setNotification({
           open: true,
-          message: 'No flashcards could be generated from this content',
-          severity: 'warning'
+          message: 'No flashcards could be generated from this note',
+          severity: 'warning',
+          showViewButton: false
         });
       }
     } catch (error) {
-      console.error('Error generating AI flashcards:', error);
+      console.error('Error generating flashcards from note:', error);
       setNotification({
         open: true,
-        message: 'Failed to generate AI flashcards',
-        severity: 'error'
+        message: 'Failed to generate flashcards',
+        severity: 'error',
+        showViewButton: false
       });
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingFromNote(false);
     }
   };
-
-  const handleSaveGeneratedFlashcards = () => {
+  
+  // Add a function to save flashcards generated from a note
+  const handleSaveNoteFlashcards = () => {
+    if (!selectedNote) return;
+    
     // Convert the API flashcard format to the app's flashcard format
     const flashcardsToSave = generatedFlashcards.map(card => ({
       id: uuidv4(),
       front: card.question,
       back: card.answer,
       tags: [...card.tags],
+      noteId: selectedNote.id,
       createdAt: new Date()
     }));
     
@@ -218,207 +337,64 @@ const Flashcards: React.FC = () => {
     setNotification({
       open: true,
       message: `${flashcardsToSave.length} flashcards saved successfully!`,
-      severity: 'success'
+      severity: 'success',
+      showViewButton: false
     });
-    setAiDialogOpen(false);
-  };
-
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    setNoteToFlashcardsDialogOpen(false);
     
-    // Check if file is an image
-    if (!file.type.match('image.*')) {
-      setNotification({
-        open: true,
-        message: 'Please select an image file (jpg, png, etc.)',
-        severity: 'error'
-      });
-      return;
-    }
-    
-    try {
-      setIsProcessingImage(true);
-      setImageDialogOpen(true);
-      setExtractedText('');
-      setImageGeneratedFlashcards([]);
-      
-      // First try to use the backend OCR (which uses Tesseract)
-      const response = await api.extractTextFromImage(file);
-      
-      if (response.error) {
-        throw new Error(response.error);
-      }
-      
-      // If backend OCR succeeded, use the extracted text
-      if (response.data?.text) {
-        setExtractedText(response.data.text);
-        
-        // Automatically generate flashcards from the extracted text
-        await generateFlashcardsFromOCRText(response.data.text);
-      } else {
-        // If backend failed, try client-side OCR with Tesseract.js
-        await processImageWithTesseract(file);
-      }
-    } catch (error) {
-      console.error('Error processing image:', error);
-      setNotification({
-        open: true,
-        message: `Error processing image: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setIsProcessingImage(false);
+    // If we have created flashcards, switch to study mode to view them
+    if (flashcardsToSave.length > 0) {
+      setActiveNoteId(selectedNote.id);
+      setViewMode('byNote');
+      setActiveTab('study');
+      setCurrentIndex(0);
+      setIsFlipped(false);
+      setFocusedStudyMode(true);
     }
   };
 
-  const processImageWithTesseract = async (file: File) => {
-    try {
-      setNotification({
-        open: true,
-        message: 'Processing image with OCR (this may take a moment)...',
-        severity: 'info'
-      });
-      
-      // Create a worker with 'eng' language directly in v5
-      const worker = await createWorker('eng');
-      
-      // Create URL for the image file
-      const imageURL = URL.createObjectURL(file);
-      
-      // Recognize text in the image
-      const { data } = await worker.recognize(imageURL);
-      
-      if (data.text && data.text.length > 20) {
-        setExtractedText(data.text);
-        
-        // Automatically generate flashcards from the extracted text
-        await generateFlashcardsFromOCRText(data.text);
-      } else {
-        setNotification({
-          open: true,
-          message: 'Could not extract sufficient text from the image. Try a clearer image.',
-          severity: 'warning'
-        });
-      }
-      
-      // Clean up
-      await worker.terminate();
-      URL.revokeObjectURL(imageURL);
-    } catch (error) {
-      console.error('Tesseract OCR error:', error);
-      throw new Error('Client-side OCR failed. Try a different image or improve image quality.');
-    }
+  // Handle closing focused study mode
+  const handleCloseFocusedMode = () => {
+    setFocusedStudyMode(false);
+    setViewMode('all');
+    setActiveNoteId(null);
+    setCurrentIndex(0);
   };
 
-  const generateFlashcardsFromOCRText = async (text: string) => {
-    try {
-      setIsProcessingImage(true);
-      
-      // Use the title if provided, otherwise create a default title
-      const titleToUse = imageTitle || 'Image OCR Flashcards';
-      
-      // Call API to generate flashcards
-      const result = await api.generateFlashcardsFromText(text, titleToUse, availableModel as AIModel);
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      
-      if (result.data?.flashcards && result.data.flashcards.length > 0) {
-        setImageGeneratedFlashcards(result.data.flashcards);
-        
-        // Extract potential tags from the title
-        if (titleToUse) {
-          const titleWords = titleToUse.split(' ');
-          if (titleWords.length > 0) {
-            setImageTags([titleToUse]);
-          }
-        }
-        
-        setNotification({
-          open: true,
-          message: `Generated ${result.data.flashcards.length} flashcards from image!`,
-          severity: 'success'
-        });
-      } else {
-        setNotification({
-          open: true,
-          message: 'Could not generate flashcards from the extracted text.',
-          severity: 'warning'
-        });
-      }
-    } catch (error) {
-      console.error('Error generating flashcards:', error);
-      setNotification({
-        open: true,
-        message: `Error generating flashcards: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setIsProcessingImage(false);
-    }
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value);
+    // Reset to first card and hide answer when search changes
+    setCurrentIndex(0);
+    setIsFlipped(false);
   };
 
-  const saveImageFlashcards = () => {
-    if (imageGeneratedFlashcards.length === 0) {
-      return;
-    }
-    
-    // Convert the API flashcard format to the app's flashcard format
-    const flashcardsToSave = imageGeneratedFlashcards.map(card => ({
-      id: uuidv4(),
-      front: card.question,
-      back: card.answer,
-      tags: [...imageTags, ...card.tags],
-      createdAt: new Date()
-    }));
-    
-    // Dispatch action to add flashcards to global state
-    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
-    
-    // Show success message and close dialog
-    setNotification({
-      open: true,
-      message: `${flashcardsToSave.length} flashcards saved successfully!`,
-      severity: 'success'
-    });
-    setImageDialogOpen(false);
-    
-    // Reset states
-    setExtractedText('');
-    setImageGeneratedFlashcards([]);
-    setImageTitle('');
-    setImageTags([]);
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    // Reset to first card and hide answer when search is cleared
+    setCurrentIndex(0);
+    setIsFlipped(false);
   };
 
-  const handleCreateFlashcard = () => {
-    if (!newFlashcard.front || !newFlashcard.back) {
-      setNotification({
-        open: true,
-        message: 'Please provide both front and back content for the flashcard',
-        severity: 'warning'
-      });
-      return;
+  // Function to handle cancel during flashcard creation
+  const handleCancelCreation = () => {
+    // Check if there are unsaved changes
+    const hasUnsavedChanges = newFlashcard.front.trim() !== '' || 
+                             newFlashcard.back.trim() !== '' || 
+                             newFlashcard.tags.length > 0;
+    
+    if (hasUnsavedChanges) {
+      // Show confirmation dialog
+      if (window.confirm('You have unsaved changes. Are you sure you want to cancel?')) {
+        resetCreationForm();
+      }
+    } else {
+      // No changes, just close
+      resetCreationForm();
     }
-    
-    const flashcard = {
-      id: uuidv4(),
-      front: newFlashcard.front,
-      back: newFlashcard.back,
-      tags: newFlashcard.tags,
-      createdAt: new Date()
-    };
-    
-    dispatch({ type: 'ADD_FLASHCARD', payload: flashcard });
-    
-    setNotification({
-      open: true,
-      message: 'Flashcard created successfully!',
-      severity: 'success'
-    });
-    
-    // Reset form
+  };
+  
+  // Reset the creation form
+  const resetCreationForm = () => {
     setNewFlashcard({
       front: '',
       back: '',
@@ -427,357 +403,908 @@ const Flashcards: React.FC = () => {
     setCurrentNewTag('');
     setOpenCreateForm(false);
   };
-
-  const handleTextToFlashcards = async () => {
-    if (!userInputText || userInputText.trim().length < 50) {
-      setNotification({
-        open: true,
-        message: 'Please enter more text to generate meaningful flashcards',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    try {
-      setIsProcessingText(true);
-      
-      // Call API to generate flashcards from text
-      const result = await api.generateFlashcardsFromText(userInputText, textTitle, availableModel as AIModel);
-      
-      if (result.error) {
-        throw new Error(result.error);
-      }
-      
-      if (result.data?.flashcards && result.data.flashcards.length > 0) {
-        setTextGeneratedFlashcards(result.data.flashcards);
-        
-        setNotification({
-          open: true,
-          message: `Generated ${result.data.flashcards.length} flashcards!`,
-          severity: 'success'
-        });
-      } else {
-        setNotification({
-          open: true,
-          message: 'Could not generate flashcards from the provided text.',
-          severity: 'warning'
-        });
-      }
-    } catch (error) {
-      console.error('Error generating flashcards:', error);
-      setNotification({
-        open: true,
-        message: `Error generating flashcards: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        severity: 'error'
-      });
-    } finally {
-      setIsProcessingText(false);
-    }
-  };
-
-  const saveTextFlashcards = () => {
-    if (textGeneratedFlashcards.length === 0) {
-      return;
-    }
-    
-    // Convert the API flashcard format to the app's flashcard format
-    const flashcardsToSave = textGeneratedFlashcards.map(card => ({
+  
+  // Function to create a new flashcard
+  const handleCreateFlashcard = () => {
+    const flashcard: Flashcard = {
       id: uuidv4(),
-      front: card.question,
-      back: card.answer,
-      tags: textTitle ? [textTitle] : [],
+      front: newFlashcard.front,
+      back: newFlashcard.back,
+      tags: newFlashcard.tags,
       createdAt: new Date()
-    }));
+    };
     
-    // Dispatch action to add flashcards to global state
-    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
+    // Add to global state
+    dispatch({ type: 'ADD_FLASHCARDS', payload: [flashcard] });
     
-    // Show success message and close dialog
+    // Show success message
     setNotification({
       open: true,
-      message: `${flashcardsToSave.length} flashcards saved successfully!`,
-      severity: 'success'
+      message: 'Flashcard created successfully!',
+      severity: 'success',
+      showViewButton: false
     });
-    setTextDialogOpen(false);
     
-    // Reset states
-    setUserInputText('');
-    setTextGeneratedFlashcards([]);
-    setTextTitle('');
+    // Reset form
+    resetCreationForm();
+  };
+
+  // Export selected flashcards to Anki format
+  const handleExportSelected = (cardsToExport: Flashcard[]) => {
+    if (cardsToExport.length === 0) {
+      cardsToExport = [filteredFlashcards[currentIndex]]; // Export current card if none selected
+    }
+    
+    // Format for Anki compatibility
+    const ankiFormat = cardsToExport.map(card => ({
+      front: card.front,
+      back: card.back,
+      tags: card.tags.join(' ')
+    }));
+
+    const blob = new Blob([JSON.stringify(ankiFormat, null, 2)], {
+      type: 'application/json'
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'anki-flashcards.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    setNotification({
+      open: true,
+      message: `${cardsToExport.length} flashcard${cardsToExport.length > 1 ? 's' : ''} exported successfully!`,
+      severity: 'success',
+      showViewButton: false
+    });
+  };
+
+  // Get title of the currently active note
+  const getActiveNoteTitle = () => {
+    if (activeNoteId) {
+      const note = state.notes.find(n => n.id === activeNoteId);
+      return note?.title || "Selected Note";
+    }
+    return null;
+  };
+
+  // Function to toggle answer visibility
+  const handleToggleAnswer = () => {
+    setIsFlipped(!isFlipped);
   };
 
   const renderStudyMode = () => (
-    <>
-      {flashcards.length > 0 ? (
-        <Box sx={{
-          mb: 4,
-          p: 2,
-          borderRadius: 2,
-          background: theme.palette.background.paper,
-          boxShadow: 1,
-          maxWidth: 800,
-          mx: 'auto',
+    <Box sx={{ mt: 3 }}>
+      {/* Search Field - Only show if not in focused study mode */}
+      {!focusedStudyMode && (
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <TextField
+            fullWidth
+            placeholder="Search notes to generate flashcards..."
+            value={searchQuery}
+            onChange={handleSearch}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={handleClearSearch} 
+                    edge="end" 
+                    size="small"
+                    aria-label="Clear search"
+                  >
+                    <ClearIcon />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              }
+            }}
+          />
+        </Paper>
+      )}
+
+      {/* Generate from Note Button - Main focus of the study mode */}
+      <Paper sx={{ p: 3, mb: 3, bgcolor: alpha(theme.palette.primary.main, 0.05), borderRadius: 2 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          flexDirection: { xs: 'column', sm: 'row' },
+          alignItems: { xs: 'flex-start', sm: 'center' }, 
+          justifyContent: 'space-between',
+          gap: 2
         }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>Flashcard {currentIndex + 1} of {flashcards.length}</Typography>
-            <Box>
-              <IconButton
-                onClick={handlePrevious}
-                disabled={currentIndex === 0}
-                size="small"
-              >
-                <PrevIcon />
-              </IconButton>
-              <IconButton
-                onClick={handleNext}
-                disabled={currentIndex === flashcards.length - 1}
-                size="small"
-              >
-                <NextIcon />
-              </IconButton>
-            </Box>
-          </Box>
-          
-          <Divider sx={{ mb: 2 }} />
-          
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500, color: 'text.secondary' }}>
-              Question {isFlipped ? '(click to see question)' : ''}
-            </Typography>
-            {!isFlipped && (
-              <Box
-                sx={{
-                  p: 2,
-                  border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
-                  borderRadius: 1,
-                  minHeight: 100,
-                  '& ul': { textAlign: 'left' },
-                  '& blockquote': { 
-                    borderLeft: `4px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-                    padding: '0.5em 1em',
-                    backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                    textAlign: 'left'
-                  }
-                }}
-                dangerouslySetInnerHTML={{ __html: flashcards[currentIndex].front }}
-              />
-            )}
-          </Box>
-          
           <Box>
-            <Typography variant="body2" sx={{ mb: 0.5, fontWeight: 500, color: 'text.secondary' }}>
-              Answer {!isFlipped ? '(click to see answer)' : ''}
+            <Typography variant="h6" gutterBottom>Generate from Notes</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {notesToSelectFrom.length > 0 
+                ? "Generate flashcards directly from your existing notes for more focused study materials."
+                : "You don't have any notes yet. Create notes first to generate flashcards from them."}
             </Typography>
-            {isFlipped && (
-              <Box
-                sx={{
-                  p: 2,
-                  border: `1px solid ${alpha(theme.palette.divider, 0.8)}`,
-                  borderRadius: 1,
-                  minHeight: 100,
-                  '& ul': { textAlign: 'left' },
-                  '& blockquote': { 
-                    borderLeft: `4px solid ${alpha(theme.palette.primary.main, 0.5)}`,
-                    padding: '0.5em 1em',
-                    backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                    textAlign: 'left'
-                  }
-                }}
-                dangerouslySetInnerHTML={{ __html: flashcards[currentIndex].back }}
-              />
-            )}
           </Box>
+          <Button
+            variant="contained" 
+            color="primary"
+            startIcon={<FolderIcon />}
+            onClick={() => {
+              // Open dialog to select note
+              setAiDialogOpen(true);
+            }}
+            disabled={notesToSelectFrom.length === 0}
+            sx={{ 
+              whiteSpace: 'nowrap',
+              px: 2,
+              py: { xs: 1, sm: 1.5 }
+            }}
+          >
+            Select Note
+          </Button>
+        </Box>
+      </Paper>
+
+      {/* If in focused study mode, show the active note title */}
+      {focusedStudyMode && activeNoteId && (
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 3,
+          p: 2,
+          bgcolor: alpha(theme.palette.primary.main, 0.08),
+          borderRadius: 2
+        }}>
+          <Typography variant="h6">
+            Studying: {getActiveNoteTitle()}
+          </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<CloseIcon />}
+            onClick={handleCloseFocusedMode}
+          >
+            Exit Study Mode
+          </Button>
+        </Box>
+      )}
+
+      {/* Flashcards by Note Section - Moved from Flashcards tab to Study Mode tab */}
+      {!focusedStudyMode && notesWithFlashcards.length > 0 && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h6" gutterBottom>
+            Flashcards by Note
+          </Typography>
           
-          <Box sx={{ mt: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {flashcards[currentIndex].tags.map((tag, index) => (
-                <Chip key={index} label={tag} size="small" color="primary" variant="outlined" />
-              ))}
-            </Box>
-            <Button 
-              variant="outlined"
-              onClick={() => setIsFlipped(!isFlipped)}
-            >
-              {isFlipped ? 'Show Question' : 'Show Answer'}
-            </Button>
+          <Grid container spacing={2}>
+            {notesWithFlashcards.map(noteId => {
+              const noteCards = flashcardsByNote.get(noteId) || [];
+              const noteInfo = state.notes.find(n => n.id === noteId);
+              
+              if (!noteInfo) return null;
+              
+              return (
+                <Grid item xs={12} sm={6} md={4} key={noteId}>
+                  <Card 
+                    sx={{ 
+                      height: '100%',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: 3
+                      }
+                    }}
+                    onClick={() => viewExistingFlashcards(noteId)}
+                  >
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Typography 
+                        variant="h6" 
+                        gutterBottom
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
+                        }}
+                      >
+                        {noteInfo.title}
+                      </Typography>
+                      
+                      <Divider sx={{ mt: 1, mb: 2 }} />
+                      
+                      <Typography variant="body2" color="text.secondary">
+                        {noteCards.length} flashcard{noteCards.length !== 1 ? 's' : ''}
+                      </Typography>
+                    </CardContent>
+                    
+                    <Box sx={{ p: 2, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          viewExistingFlashcards(noteId);
+                        }}
+                      >
+                        Study
+                      </Button>
+                    </Box>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+        </Box>
+      )}
+
+      {/* No flashcards available prompt - Only show when no notes with flashcards exist */}
+      {!focusedStudyMode && !notesToSelectFrom.length && !notesWithFlashcards.length && (
+        <Box sx={{ textAlign: 'center', py: 6, px: 2 }}>
+          <Typography variant="h5" gutterBottom>No Notes Available</Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: '600px', mx: 'auto' }}>
+            Create notes in the editor first, then come back to generate flashcards from them.
+          </Typography>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => navigate('/editor')}
+          >
+            Create a Note
+          </Button>
+        </Box>
+      )}
+
+      {/* Empty state when there are notes but no selection yet and no existing flashcards */}
+      {!focusedStudyMode && notesToSelectFrom.length > 0 && notesWithFlashcards.length === 0 && (
+        <Box sx={{ 
+          textAlign: 'center', 
+          py: 6, 
+          px: 2, 
+          bgcolor: alpha(theme.palette.background.paper, 0.7),
+          borderRadius: 2
+        }}>
+          <Typography variant="h5" gutterBottom>Select a Note to Generate Flashcards</Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3, maxWidth: '600px', mx: 'auto' }}>
+            Click the "Select Note" button above to choose a note and generate flashcards.
+          </Typography>
+          <Box sx={{ 
+            maxWidth: '500px', 
+            mx: 'auto', 
+            p: 3, 
+            bgcolor: alpha(theme.palette.info.main, 0.1),
+            borderRadius: 2
+          }}>
+            <Typography variant="body2" sx={{ mb: 1, fontWeight: 'medium' }} color="info.main">
+              Pro Tip:
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              After generating flashcards, they will be saved to the Flashcards tab for future reference.
+            </Typography>
           </Box>
         </Box>
-      ) : (
-        <Alert severity="info" sx={{ my: 2 }}>
-          No flashcards available. Create a new note with the AI Assistant to generate flashcards automatically.
-        </Alert>
       )}
-    </>
-  );
 
-  const renderHistoryMode = () => (
-    <Box sx={{ mt: 2 }}>
-      {flashcards.length > 0 ? (
-        <Grid container spacing={3}>
-          {flashcards.map((card, index) => (
-            <Grid item xs={12} md={6} key={card.id}>
+      {/* Flashcard display with backdrop when in focused mode */}
+      {focusedStudyMode && (
+        <Box sx={{ 
+          position: 'relative', 
+          display: 'flex', 
+          justifyContent: 'center', 
+          mb: 4
+        }}>
+          <Box sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            bgcolor: 'rgba(0, 0, 0, 0.5)',
+            zIndex: 10,
+            backdropFilter: 'blur(5px)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            flexDirection: 'column',
+            px: 2
+          }}>
+            <Box sx={{ 
+              width: '100%', 
+              maxWidth: 700, 
+              display: 'flex', 
+              flexDirection: 'column', 
+              alignItems: 'center'
+            }}>
               <Card 
-                elevation={1}
-                sx={{ 
-                  height: '100%',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    boxShadow: 3,
-                    transform: 'translateY(-4px)'
-                  }
+                  sx={{
+                  width: '100%', 
+                  height: '60vh',
+                  minHeight: 400,
+                  maxHeight: 600,
+                  boxShadow: 3,
+                  borderRadius: 2,
+                  position: 'relative',
+                  mb: 3,
+                  display: 'flex',
+                  flexDirection: 'column',
                 }}
+                onClick={handleToggleAnswer}
               >
-                <CardContent>
+                <CardContent
+                  sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    p: 4,
+                    justifyContent: 'space-between',
+                  }}
+                >
                   <Box sx={{ mb: 2 }}>
-                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                      Question:
+                    <Typography variant="h4" component="div" align="center" gutterBottom>
+                      {filteredFlashcards[currentIndex]?.front}
                     </Typography>
-                    <Box 
-                      sx={{ 
-                        p: 1.5, 
-                        bgcolor: alpha(theme.palette.primary.main, 0.04),
-                        borderRadius: 1,
-                        minHeight: '60px',
-                        mb: 2
-                      }}
-                      dangerouslySetInnerHTML={{ __html: card.front }}
-                    />
-                    
-                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
-                      Answer:
-                    </Typography>
-                    <Box 
-                      sx={{ 
-                        p: 1.5, 
-                        bgcolor: alpha(theme.palette.secondary.main, 0.04),
-                        borderRadius: 1,
-                        minHeight: '60px'
-                      }}
-                      dangerouslySetInnerHTML={{ __html: card.back }}
-                    />
                   </Box>
                   
-                  <Divider sx={{ my: 2 }} />
-                  
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                      {card.tags.slice(0, 3).map((tag, i) => (
-                        <Chip key={i} label={tag} size="small" color="primary" variant="outlined" />
-                      ))}
-                      {card.tags.length > 3 && (
-                        <Chip label={`+${card.tags.length - 3}`} size="small" color="default" variant="outlined" />
-                      )}
+                  {isFlipped && (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexGrow: 1,
+                      py: 3,
+                      px: 2,
+                      bgcolor: alpha(theme.palette.secondary.light, 0.05),
+                      borderRadius: 2,
+                      minHeight: '40%',
+                    }}>
+                      <Typography 
+                        variant="h5" 
+                        component="div" 
+                        align="center" 
+                        color="secondary.main"
+                      >
+                        {filteredFlashcards[currentIndex]?.back}
+                      </Typography>
                     </Box>
-                    <Button
-                      startIcon={<PsychologyIcon />}
-                      size="small"
-                      onClick={() => handleGenerateAIFlashcards(card)}
-                      color="primary"
-                    >
-                      Create AI Flashcards
-                    </Button>
+                  )}
+                  
+                  <Box sx={{ 
+                    position: 'absolute', 
+                    bottom: 16, 
+                    right: 16, 
+                    display: 'flex', 
+                    alignItems: 'center',
+                    opacity: 0.7
+                  }}>
+                    {!isFlipped ? (
+                      <Typography variant="caption">Click to show answer</Typography>
+                    ) : (
+                      <Typography variant="caption">Click again to hide answer</Typography>
+                    )}
                   </Box>
                 </CardContent>
               </Card>
-            </Grid>
-          ))}
-        </Grid>
-      ) : (
-        <Alert severity="info" sx={{ my: 2 }}>
-          No flashcards available. Create a new note with the AI Assistant to generate flashcards automatically.
-        </Alert>
+              
+              <Box sx={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                mb: 2, 
+                width: '100%'
+              }}>
+                <IconButton 
+                  onClick={handlePrevious} 
+                  disabled={currentIndex === 0}
+                  size="large"
+                  sx={{ 
+                    mx: 2,
+                    bgcolor: alpha(theme.palette.background.paper, 0.9),
+                    '&:hover': { bgcolor: theme.palette.background.paper },
+                    '&.Mui-disabled': { opacity: 0.5 }
+                  }}
+                >
+                  <PrevIcon />
+                </IconButton>
+                
+                <Typography sx={{ color: 'white', fontWeight: 'bold' }}>
+                  {currentIndex + 1} / {filteredFlashcards.length}
+                </Typography>
+                
+                <IconButton 
+                  onClick={handleNext} 
+                  disabled={currentIndex === filteredFlashcards.length - 1}
+                  size="large"
+                  sx={{ 
+                    mx: 2,
+                    bgcolor: alpha(theme.palette.background.paper, 0.9),
+                    '&:hover': { bgcolor: theme.palette.background.paper },
+                    '&.Mui-disabled': { opacity: 0.5 }
+                  }}
+                >
+                  <NextIcon />
+                </IconButton>
+              </Box>
+              
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button 
+                  variant="contained"
+                  color="secondary"
+                  onClick={handleCloseFocusedMode}
+                  startIcon={<CloseIcon />}
+                >
+                  Close
+                </Button>
+                
+                <Button 
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  onClick={() => handleExportSelected([filteredFlashcards[currentIndex]])}
+                >
+                  Export to Anki
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        </Box>
       )}
     </Box>
   );
 
+  const renderHistoryMode = () => (
+    <Box sx={{ mt: 3 }}>
+      {/* Search Field */}
+      <Paper sx={{ p: 2, mb: 3 }}>
+        <TextField
+          fullWidth
+          placeholder="Search flashcards by title, content, or tags..."
+          value={searchQuery}
+          onChange={handleSearch}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon sx={{ color: 'text.secondary' }} />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton
+                  onClick={handleClearSearch} 
+                  edge="end" 
+                  size="small"
+                  aria-label="Clear search"
+                >
+                  <ClearIcon />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 2,
+            }
+          }}
+        />
+      </Paper>
+
+      {/* Display search results count if searching */}
+      {searchQuery && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Found {filteredFlashcards.length} {filteredFlashcards.length === 1 ? 'result' : 'results'} 
+          for "{searchQuery}"
+        </Typography>
+      )}
+
+      {/* All Flashcards Grid */}
+      <Box sx={{ mt: 2 }}>
+        <Typography variant="h6" gutterBottom>
+          All Flashcards
+        </Typography>
+        
+        {filteredFlashcards.length > 0 ? (
+          <Grid container spacing={2}>
+            {filteredFlashcards.map((card) => (
+              <Grid item xs={12} sm={6} md={4} key={card.id}>
+                <Card 
+                  sx={{ 
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      transform: 'translateY(-4px)',
+                      boxShadow: 3
+                    }
+                  }}
+                  onClick={() => {
+                    // Find the index of this card in the filtered list
+                    const index = filteredFlashcards.findIndex(c => c.id === card.id);
+                    setCurrentIndex(index);
+                    // Hide answer initially, require user to click
+                    setIsFlipped(false);
+                    setActiveTab('study');
+                    
+                    // If card has noteId, set it as active
+                    if (card.noteId) {
+                      setActiveNoteId(card.noteId);
+                      setViewMode('byNote');
+                    } else {
+                      setViewMode('all');
+                    }
+                    
+                    // Switch to focused study mode
+                    setFocusedStudyMode(true);
+                  }}
+                >
+                  <CardContent sx={{ flexGrow: 1 }}>
+                    <Typography 
+                      variant="h6" 
+                      gutterBottom
+                      sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {card.front}
+                    </Typography>
+                    
+                    <Divider sx={{ mt: 1, mb: 2 }} />
+                    
+                    <Typography 
+                      variant="body2"
+                      color="text.secondary"
+                      sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                      }}
+                    >
+                      {card.back}
+                    </Typography>
+                  </CardContent>
+                  
+                  <Box sx={{ p: 2, pt: 0 }}>
+                    <Typography 
+                      variant="caption" 
+                      color="text.secondary"
+                      sx={{ 
+                        display: 'block', 
+                        textAlign: 'right',
+                        mt: 1 
+                      }}
+                    >
+                      {new Date(card.createdAt).toLocaleDateString()}
+                    </Typography>
+                  </Box>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              No flashcards found
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {searchQuery ? 
+                "No flashcards match your search criteria." : 
+                "You haven't created any flashcards yet."}
+            </Typography>
+            
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                setActiveTab('study');
+                setSearchQuery('');
+              }}
+            >
+              Generate Flashcards
+            </Button>
+          </Box>
+        )}
+      </Box>
+    </Box>
+  );
+
+  // Updated notification component
+  const renderNotification = () => {
+    // Auto-dismiss timer 
+    useEffect(() => {
+      if (notification.open) {
+        const timer = setTimeout(() => {
+          handleCloseNotification();
+        }, 5000); // 5 seconds auto-dismiss
+        
+        return () => clearTimeout(timer);
+      }
+    }, [notification.open]);
+    
+    return (
+      <Snackbar 
+        open={notification.open} 
+        autoHideDuration={5000}
+        onClose={handleCloseNotification}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        sx={{
+          '& .MuiPaper-root': {
+            minWidth: '300px',
+            maxWidth: '500px'
+          }
+        }}
+      >
+        <Alert 
+          severity={notification.severity} 
+          onClose={handleCloseNotification}
+          sx={{ 
+            width: '100%',
+            fontSize: '0.9rem',
+            alignItems: 'center'
+          }}
+          action={
+            notification.severity === 'success' && notification.showViewButton && (
+              <Button 
+                color="inherit" 
+                size="small"
+                onClick={() => navigate('/flashcards')}
+              >
+                View Cards
+              </Button>
+            )
+          }
+        >
+          {notification.message}
+        </Alert>
+      </Snackbar>
+    );
+  };
+
+  // Enhanced notification system with optional view button
+  const showNotification = (message: string, severity: 'success' | 'error' | 'info' | 'warning', showViewButton = false) => {
+    setNotification({
+      open: true,
+      message,
+      severity,
+      showViewButton
+    });
+  };
+
   return (
-    <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
+    <Box sx={{ px: { xs: 1, sm: 2 }, py: 2, maxWidth: '1200px', margin: '0 auto' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 3,
+        flexWrap: { xs: 'wrap', sm: 'nowrap' },
+        gap: 2
+      }}>
+        <Typography variant="h4" sx={{ fontWeight: 700 }}>
           My Flashcards
         </Typography>
-        <Box>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddIcon />}
-            onClick={() => setOpenCreateForm(true)}
-          >
-            Create Flashcard
-          </Button>
-          
-          <Button
-            variant="contained"
-            color="secondary"
-            startIcon={<ImageIcon />}
-            component="label"
-            sx={{ ml: 2 }}
-          >
-            Image to Flashcards
-            <input
-              type="file"
-              hidden
-              accept="image/*"
-              onChange={handleImageUpload}
-            />
-          </Button>
-          
-          <Button
-            variant="contained"
-            color="info"
-            startIcon={<PsychologyIcon />}
-            onClick={() => setTextDialogOpen(true)}
-            sx={{ ml: 2 }}
-          >
-            Text to Flashcards
-          </Button>
-        </Box>
       </Box>
 
-      {/* Tab navigation */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={handleTabChange} aria-label="flashcard view modes">
-          <Tab 
-            icon={<SchoolIcon />} 
-            iconPosition="start" 
-            label="Study Mode" 
-            value="study" 
-          />
-          <Tab 
-            icon={<HistoryIcon />} 
-            iconPosition="start" 
-            label="Flashcard History" 
-            value="history" 
-          />
-        </Tabs>
-      </Box>
+      <Tabs
+        value={activeTab}
+        onChange={handleTabChange}
+        variant="fullWidth"
+        sx={{
+          mb: 3,
+          borderBottom: 1,
+          borderColor: 'divider',
+          '& .MuiTab-root': {
+            fontWeight: 600,
+          }
+        }}
+      >
+        <Tab
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <SchoolIcon sx={{ mr: 1 }} />
+              Study Mode
+            </Box>
+          }
+          value="study"
+        />
+        <Tab
+          label={
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <HistoryIcon sx={{ mr: 1 }} />
+              Flashcards
+            </Box>
+          }
+          value="history"
+        />
+      </Tabs>
 
-      {/* Tab content */}
       {activeTab === 'study' ? renderStudyMode() : renderHistoryMode()}
-      
-      {/* AI Flashcard Generation Dialog */}
+
+      {/* Enhanced Note Selection Dialog */}
       <Dialog
         open={aiDialogOpen}
-        onClose={() => !isGenerating && setAiDialogOpen(false)}
+        onClose={() => !isGeneratingFromNote && setAiDialogOpen(false)}
+        fullWidth
+        maxWidth="md"
+        sx={{
+          '& .MuiDialog-paper': {
+            maxHeight: '80vh',
+          }
+        }}
+      >
+        <DialogTitle>
+          Select a Note to Generate Flashcards
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 3 }}>
+          {isGeneratingFromNote ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+              <CircularProgress sx={{ mb: 2 }} />
+              <Typography>Generating flashcards based on note content...</Typography>
+            </Box>
+          ) : (
+            <>
+              {notesToSelectFrom.length > 0 ? (
+                <Grid container spacing={2}>
+                  {notesToSelectFrom.map(note => {
+                    // Check if note already has flashcards
+                    const hasExistingFlashcards = noteHasFlashcards(note.id);
+                    
+                    return (
+                      <Grid item xs={12} sm={6} key={note.id}>
+                        <Card 
+                          sx={{ 
+                            cursor: 'pointer',
+                            transition: 'all 0.2s',
+                            '&:hover': {
+                              transform: 'translateY(-4px)',
+                              boxShadow: 3,
+                              bgcolor: alpha(theme.palette.primary.light, 0.05)
+                            },
+                            height: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            position: 'relative'
+                          }}
+                          onClick={() => handleGenerateFromNote(note)}
+                        >
+                          {hasExistingFlashcards && (
+                            <Box sx={{
+                              position: 'absolute',
+                              top: 10,
+                              right: 10,
+                              bgcolor: theme.palette.success.main,
+                              color: 'white',
+                              borderRadius: 1,
+                              px: 1,
+                              py: 0.5,
+                              fontSize: '0.75rem',
+                              fontWeight: 'bold'
+                            }}>
+                              Flashcards Available
+                            </Box>
+                          )}
+                          
+                          <CardContent sx={{ flexGrow: 1 }}>
+                            <Typography variant="h6" gutterBottom title={note.title} sx={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 1,
+                              WebkitBoxOrient: 'vertical',
+                            }}>
+                              {note.title}
+                            </Typography>
+                            <Typography 
+                              variant="body2" 
+                              color="text.secondary"
+                              sx={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                display: '-webkit-box',
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: 'vertical',
+                                mb: 2
+                              }}
+                            >
+                              {note.content.replace(/<[^>]*>/g, '').substring(0, 150)}
+                              {note.content.length > 150 ? '...' : ''}
+                            </Typography>
+                            
+                            <Box sx={{ mt: 'auto', textAlign: 'right' }}>
+                              <Button
+                                variant="outlined"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleGenerateFromNote(note);
+                                }}
+                                color={hasExistingFlashcards ? "success" : "primary"}
+                              >
+                                {hasExistingFlashcards ? "View Flashcards" : "Generate Flashcards"}
+                              </Button>
+                            </Box>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Typography variant="body1" gutterBottom>
+                    You don't have any notes yet.
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    color="primary"
+                    onClick={() => {
+                      navigate('/editor');
+                      setAiDialogOpen(false);
+                    }}
+                    sx={{ mt: 2 }}
+                  >
+                    Create a Note First
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setAiDialogOpen(false)} 
+            color="inherit"
+            disabled={isGeneratingFromNote}
+          >
+            Cancel
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Note to Flashcards Dialog */}
+      <Dialog
+        open={noteToFlashcardsDialogOpen}
+        onClose={() => !isGeneratingFromNote && setNoteToFlashcardsDialogOpen(false)}
         fullWidth
         maxWidth="md"
       >
         <DialogTitle>
-          Generate AI Flashcards
-          {isGenerating && <CircularProgress size={24} sx={{ ml: 2 }} />}
+          Generate Flashcards from Note
+          {isGeneratingFromNote && <CircularProgress size={24} sx={{ ml: 2 }} />}
         </DialogTitle>
         <DialogContent dividers>
-          {isGenerating ? (
+          {isGeneratingFromNote ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
               <CircularProgress sx={{ mb: 2 }} />
-              <Typography>Generating flashcards based on your content...</Typography>
+              <Typography>Generating flashcards based on note content...</Typography>
             </Box>
           ) : (
             <>
+              {selectedNote && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Source Note: {selectedNote.title}
+                  </Typography>
+                </Box>
+              )}
+
               {generatedFlashcards.length > 0 ? (
                 <Box>
                   <Typography variant="h6" gutterBottom>
-                    Generated Flashcards
+                    Generated Flashcards ({generatedFlashcards.length})
                   </Typography>
                   {generatedFlashcards.map((card, index) => (
                     <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.secondary.main, 0.05) }}>
@@ -789,24 +1316,13 @@ const Flashcards: React.FC = () => {
                         <Typography variant="body1">
                           A: {card.answer}
                         </Typography>
-                        <Box sx={{ mt: 1 }}>
-                          {card.tags.map((tag, tagIndex) => (
-                            <Chip 
-                              key={tagIndex} 
-                              label={tag} 
-                              size="small" 
-                              variant="outlined"
-                              sx={{ mr: 0.5, mt: 0.5 }}
-                            />
-                          ))}
-                        </Box>
                       </CardContent>
                     </Card>
                   ))}
                 </Box>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  No flashcards could be generated. Try with a different card or content.
+                  No flashcards could be generated. Try with a different note or create flashcards manually.
                 </Typography>
               )}
             </>
@@ -814,217 +1330,117 @@ const Flashcards: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setAiDialogOpen(false)} 
+            onClick={() => {
+              setNoteToFlashcardsDialogOpen(false);
+              setSelectedNote(null);
+              setGeneratedFlashcards([]);
+            }} 
             color="inherit"
-            disabled={isGenerating}
+            disabled={isGeneratingFromNote}
           >
             Cancel
           </Button>
           <Button 
-            onClick={handleSaveGeneratedFlashcards} 
+            onClick={handleSaveNoteFlashcards} 
             color="primary"
             variant="contained"
-            disabled={isGenerating || generatedFlashcards.length === 0}
-          >
-            Save Flashcards
-          </Button>
-        </DialogActions>
-      </Dialog>
-      
-      {/* Image OCR Dialog */}
-      <Dialog
-        open={imageDialogOpen}
-        onClose={() => !isProcessingImage && setImageDialogOpen(false)}
-        fullWidth
-        maxWidth="md"
-      >
-        <DialogTitle>
-          Image to Flashcards
-          {isProcessingImage && <CircularProgress size={24} sx={{ ml: 2 }} />}
-        </DialogTitle>
-        <DialogContent dividers>
-          {isProcessingImage ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
-              <CircularProgress sx={{ mb: 2 }} />
-              <Typography>Processing image and generating flashcards...</Typography>
-            </Box>
-          ) : (
-            <Box>
-              {extractedText && (
-                <>
-                  <Box sx={{ mb: 3 }}>
-                    <TextField
-                      label="Flashcard Set Title"
-                      fullWidth
-                      value={imageTitle}
-                      onChange={(e) => setImageTitle(e.target.value)}
-                      sx={{ mb: 2 }}
-                    />
-                    
-                    <Typography variant="subtitle1" gutterBottom>
-                      Extracted Text:
-                    </Typography>
-                    <Paper 
-                      elevation={0} 
-                      sx={{ 
-                        p: 2, 
-                        maxHeight: '150px', 
-                        overflow: 'auto',
-                        bgcolor: alpha(theme.palette.primary.main, 0.05),
-                        border: `1px solid ${theme.palette.divider}`,
-                        borderRadius: 1,
-                        mb: 2
-                      }}
-                    >
-                      <Typography variant="body2">{extractedText}</Typography>
-                    </Paper>
-                  </Box>
-                  
-                  <Typography variant="h6" gutterBottom>
-                    Generated Flashcards:
-                  </Typography>
-                  
-                  {imageGeneratedFlashcards.length > 0 ? (
-                    <Box>
-                      {imageGeneratedFlashcards.map((card, index) => (
-                        <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.secondary.main, 0.05) }}>
-                          <CardContent>
-                            <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                              Front: {card.question}
-                            </Typography>
-                            <Divider sx={{ my: 1 }} />
-                            <Typography variant="body1">
-                              Back: {card.answer}
-                            </Typography>
-                            <Box sx={{ mt: 1 }}>
-                              {imageTags.map((tag, tagIndex) => (
-                                <Chip 
-                                  key={`title-${tagIndex}`} 
-                                  label={tag} 
-                                  size="small" 
-                                  variant="outlined"
-                                  sx={{ mr: 0.5, mt: 0.5 }}
-                                />
-                              ))}
-                              {card.tags.map((tag, tagIndex) => (
-                                <Chip 
-                                  key={`card-${tagIndex}`} 
-                                  label={tag} 
-                                  size="small" 
-                                  variant="outlined"
-                                  sx={{ mr: 0.5, mt: 0.5 }}
-                                />
-                              ))}
-                            </Box>
-                          </CardContent>
-                        </Card>
-                      ))}
-                    </Box>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No flashcards could be generated. Try with a different image or manually enter flashcards.
-                    </Typography>
-                  )}
-                </>
-              )}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={() => setImageDialogOpen(false)} 
-            color="inherit"
-            disabled={isProcessingImage}
-            startIcon={<CancelIcon />}
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={saveImageFlashcards} 
-            color="primary"
-            variant="contained"
-            disabled={isProcessingImage || imageGeneratedFlashcards.length === 0}
+            disabled={isGeneratingFromNote || generatedFlashcards.length === 0}
             startIcon={<SaveIcon />}
           >
             Save Flashcards
           </Button>
         </DialogActions>
       </Dialog>
-      
-      {/* Flashcard Creation Dialog */}
+
+      {/* Display notifications */}
+      {renderNotification()}
+
+      {/* Create Flashcard Dialog */}
       <Dialog
         open={openCreateForm}
-        onClose={() => setOpenCreateForm(false)}
+        onClose={() => handleCancelCreation()}
         fullWidth
         maxWidth="md"
       >
         <DialogTitle>Create New Flashcard</DialogTitle>
         <DialogContent dividers>
-          <Box sx={{ mb: 3 }}>
+          <Box sx={{ mt: 1 }}>
             <TextField
               label="Front (Question)"
-              fullWidth
               multiline
               rows={3}
+              fullWidth
+              variant="outlined"
               value={newFlashcard.front}
-              onChange={(e) => setNewFlashcard({...newFlashcard, front: e.target.value})}
-              sx={{ mb: 2 }}
+              onChange={e => setNewFlashcard({...newFlashcard, front: e.target.value})}
+              sx={{ mb: 3 }}
             />
             
             <TextField
               label="Back (Answer)"
-              fullWidth
               multiline
               rows={3}
+              fullWidth
+              variant="outlined"
               value={newFlashcard.back}
-              onChange={(e) => setNewFlashcard({...newFlashcard, back: e.target.value})}
-              sx={{ mb: 2 }}
+              onChange={e => setNewFlashcard({...newFlashcard, back: e.target.value})}
+              sx={{ mb: 3 }}
             />
             
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>
+            <Box>
+              <Typography variant="subtitle2" gutterBottom>
                 Tags
               </Typography>
+              
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                 {newFlashcard.tags.map((tag, index) => (
-                  <Chip 
-                    key={index} 
-                    label={tag} 
+                  <Chip
+                    key={index}
+                    label={tag}
                     onDelete={() => {
-                      setNewFlashcard({
-                        ...newFlashcard, 
-                        tags: newFlashcard.tags.filter((_, i) => i !== index)
-                      });
+                      const updatedTags = [...newFlashcard.tags];
+                      updatedTags.splice(index, 1);
+                      setNewFlashcard({...newFlashcard, tags: updatedTags});
                     }}
-                    color="primary" 
+                    color="primary"
                     variant="outlined"
                   />
                 ))}
+                
+                {newFlashcard.tags.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    No tags added yet
+                  </Typography>
+                )}
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              
+              <Box sx={{ display: 'flex', gap: 1 }}>
                 <TextField
                   label="Add Tag"
                   size="small"
+                  variant="outlined"
                   value={currentNewTag}
-                  onChange={(e) => setCurrentNewTag(e.target.value)}
-                  onKeyDown={(e) => {
+                  onChange={e => setCurrentNewTag(e.target.value)}
+                  onKeyPress={e => {
                     if (e.key === 'Enter' && currentNewTag.trim()) {
-                      setNewFlashcard({
-                        ...newFlashcard,
-                        tags: [...newFlashcard.tags, currentNewTag.trim()]
-                      });
-                      setCurrentNewTag('');
                       e.preventDefault();
+                      if (!newFlashcard.tags.includes(currentNewTag.trim())) {
+                        setNewFlashcard({
+                          ...newFlashcard, 
+                          tags: [...newFlashcard.tags, currentNewTag.trim()]
+                        });
+                      }
+                      setCurrentNewTag('');
                     }
                   }}
-                  sx={{ mr: 1 }}
                 />
-                <Button 
-                  variant="outlined" 
+                
+                <Button
+                  variant="outlined"
                   onClick={() => {
-                    if (currentNewTag.trim()) {
+                    if (currentNewTag.trim() && !newFlashcard.tags.includes(currentNewTag.trim())) {
                       setNewFlashcard({
-                        ...newFlashcard,
+                        ...newFlashcard, 
                         tags: [...newFlashcard.tags, currentNewTag.trim()]
                       });
                       setCurrentNewTag('');
@@ -1039,139 +1455,24 @@ const Flashcards: React.FC = () => {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenCreateForm(false)} color="inherit">
+          <Button 
+            onClick={handleCancelCreation} 
+            color="inherit"
+            startIcon={<CancelIcon />}
+          >
             Cancel
           </Button>
           <Button 
             onClick={handleCreateFlashcard} 
             color="primary"
             variant="contained"
-            disabled={!newFlashcard.front || !newFlashcard.back}
+            startIcon={<SaveIcon />}
+            disabled={!newFlashcard.front.trim() || !newFlashcard.back.trim()}
           >
             Create Flashcard
           </Button>
         </DialogActions>
       </Dialog>
-      
-      {/* Text to Flashcards Dialog */}
-      <Dialog
-        open={textDialogOpen}
-        onClose={() => !isProcessingText && setTextDialogOpen(false)}
-        fullWidth
-        maxWidth="md"
-      >
-        <DialogTitle>
-          Text to Flashcards with Llama 3
-          {isProcessingText && <CircularProgress size={24} sx={{ ml: 2 }} />}
-        </DialogTitle>
-        <DialogContent dividers>
-          {textGeneratedFlashcards.length === 0 ? (
-            <Box sx={{ mb: 3 }}>
-              <TextField
-                label="Title (Optional)"
-                fullWidth
-                value={textTitle}
-                onChange={(e) => setTextTitle(e.target.value)}
-                sx={{ mb: 2 }}
-              />
-              
-              <TextField
-                label="Paste your text here"
-                fullWidth
-                multiline
-                rows={10}
-                value={userInputText}
-                onChange={(e) => setUserInputText(e.target.value)}
-                placeholder="Enter a long paragraph or multiple paragraphs of text to generate flashcards..."
-                sx={{ mb: 2 }}
-              />
-              
-              <Button
-                variant="contained" 
-                color="primary"
-                onClick={handleTextToFlashcards}
-                disabled={isProcessingText || userInputText.trim().length < 50}
-                sx={{ mt: 1 }}
-              >
-                {isProcessingText ? (
-                  <>
-                    <CircularProgress size={24} sx={{ mr: 1 }} color="inherit" />
-                    Processing...
-                  </>
-                ) : (
-                  'Generate Flashcards with Llama 3'
-                )}
-              </Button>
-            </Box>
-          ) : (
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                <Typography variant="h6">
-                  Generated Flashcards:
-                </Typography>
-                <Button 
-                  variant="outlined"
-                  onClick={() => {
-                    setTextGeneratedFlashcards([]);
-                    setIsProcessingText(false);
-                  }}
-                >
-                  Back to Editor
-                </Button>
-              </Box>
-              
-              {textGeneratedFlashcards.map((card, index) => (
-                <Card key={index} sx={{ mb: 2, bgcolor: alpha(theme.palette.primary.main, 0.05) }}>
-                  <CardContent>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 'bold' }}>
-                      Front: {card.question}
-                    </Typography>
-                    <Divider sx={{ my: 1 }} />
-                    <Typography variant="body1">
-                      Back: {card.answer}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              ))}
-            </Box>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button 
-            onClick={() => {
-              setTextDialogOpen(false);
-              setUserInputText('');
-              setTextGeneratedFlashcards([]);
-              setTextTitle('');
-            }} 
-            color="inherit"
-            disabled={isProcessingText}
-          >
-            Cancel
-          </Button>
-          {textGeneratedFlashcards.length > 0 && (
-            <Button 
-              onClick={saveTextFlashcards} 
-              color="primary"
-              variant="contained"
-              disabled={isProcessingText}
-            >
-              Save All Flashcards
-            </Button>
-          )}
-        </DialogActions>
-      </Dialog>
-      
-      <Snackbar 
-        open={notification.open} 
-        autoHideDuration={6000}
-        onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity={notification.severity} onClose={handleCloseNotification}>
-          {notification.message}
-        </Alert>
-      </Snackbar>
     </Box>
   );
 };

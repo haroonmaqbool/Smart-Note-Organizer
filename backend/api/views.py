@@ -175,7 +175,8 @@ def search(request):
                     "answer": card.answer,
                     "tags": card.tags,
                     "type": "flashcard",
-                    "matchScore": score
+                    "matchScore": score,
+                    "match_info": card_dict.get("match_info", {})
                 })
         
         # Sort results by match score (descending)
