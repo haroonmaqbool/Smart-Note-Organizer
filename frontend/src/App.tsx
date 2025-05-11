@@ -59,38 +59,38 @@ const createAppTheme = (mode: 'light' | 'dark') => {
     palette: {
       mode,
       primary: {
-        main: '#3d7be5',
-        light: '#62a0ff',
-        dark: '#2c5cb2',
+        main: mode === 'dark' ? '#3d7be5' : '#8AABF2', // Pastel blue for light mode
+        light: mode === 'dark' ? '#62a0ff' : '#A6C1FF',
+        dark: mode === 'dark' ? '#2c5cb2' : '#6D8AD9',
       },
       secondary: {
-        main: '#ff7d4d', // Warmer orange accent
-        light: '#ffa07a',
-        dark: '#e55e2c',
+        main: mode === 'dark' ? '#ff7d4d' : '#FFB199', // Pastel orange for light mode
+        light: mode === 'dark' ? '#ffa07a' : '#FFCBB8',
+        dark: mode === 'dark' ? '#e55e2c' : '#FF9B7D',
       },
       background: {
-        default: mode === 'dark' ? '#0f172a' : '#f5f8ff', // Adjusted for light mode
-        paper: mode === 'dark' ? '#1e293b' : '#ffffff',   // Adjusted for light mode
+        default: mode === 'dark' ? '#0f172a' : '#F0F5FF', // Lighter pastel background
+        paper: mode === 'dark' ? '#1e293b' : '#FFFFFF',   // White paper background
       },
       text: {
-        primary: mode === 'dark' ? '#f0f9ff' : '#1e293b', // Adjusted for light mode
-        secondary: mode === 'dark' ? '#94a3b8' : '#64748b', // Adjusted for light mode
+        primary: mode === 'dark' ? '#f0f9ff' : '#4A5568', // Softer text color for light mode
+        secondary: mode === 'dark' ? '#94a3b8' : '#718096', // Softer secondary text for light mode
       },
       error: {
-        main: '#ef4444',
-        light: '#f87171',
+        main: mode === 'dark' ? '#ef4444' : '#FF8A8A', // Pastel red
+        light: mode === 'dark' ? '#f87171' : '#FFADAD',
       },
       warning: {
-        main: '#f59e0b',
-        light: '#fbbf24',
+        main: mode === 'dark' ? '#f59e0b' : '#FFD699', // Pastel yellow/orange
+        light: mode === 'dark' ? '#fbbf24' : '#FFE3B3',
       },
       info: {
-        main: '#3b82f6',
-        light: '#60a5fa',
+        main: mode === 'dark' ? '#3b82f6' : '#99C4FF', // Pastel blue
+        light: mode === 'dark' ? '#60a5fa' : '#BFD9FF',
       },
       success: {
-        main: '#10b981',
-        light: '#34d399',
+        main: mode === 'dark' ? '#10b981' : '#9AECCE', // Pastel green
+        light: mode === 'dark' ? '#34d399' : '#BFF2DE',
       },
     },
     typography: {

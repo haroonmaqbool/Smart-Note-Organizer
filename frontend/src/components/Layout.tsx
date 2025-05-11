@@ -342,14 +342,17 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
       display: 'flex', 
       flexDirection: 'column', 
       height: '100%', 
-      overflow: 'hidden' // Remove scrollbars
+      overflow: 'hidden', // Remove scrollbars
+      paddingTop: 0 // Remove any top padding
     }}>
       <Box sx={{ 
         display: 'flex', 
         flexDirection: 'column',
         p: 2,
-        background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Changed to smooth gradient
-        color: 'white',
+        background: themeMode === 'dark'
+          ? `linear-gradient(135deg, #0D1B2A, #13293D)` // Keep dark mode gradient
+          : `linear-gradient(135deg, #E4ECFD, #F0F5FF)`, // Pastel blue gradient for light mode
+        color: themeMode === 'dark' ? 'white' : '#4A5568', // Text color based on theme
         position: 'relative',
         overflow: 'hidden',
         // Removed background pattern image
@@ -555,11 +558,11 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
         
         <AppBar position="fixed" color="primary" elevation={0} sx={{ 
           zIndex: theme.zIndex.drawer + 1,
-          backgroundColor: '#0D1B2A', // Dark Navy background
-          color: 'white',
-          background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
+          backgroundColor: '#0D1B2A', // Same dark navy background for both modes
+          color: 'white', // Same white text for both modes
+          background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Same gradient background for both modes
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
-          borderBottom: `1px solid rgba(196, 90, 20, 0.2)` // Orange accent
+          borderBottom: `1px solid rgba(196, 90, 20, 0.2)` // Same orange accent for both modes
         }}>
           <Toolbar>
             {isMobile && (
@@ -1022,16 +1025,23 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                   [`& .MuiDrawer-paper`]: { 
                     width: sidebarWidth, 
                     boxSizing: 'border-box',
-                    borderRight: `1px solid #0D1B2A`,
+                    borderRight: themeMode === 'dark' 
+                      ? `1px solid #0D1B2A` 
+                      : `1px solid rgba(138, 171, 242, 0.3)`, // Pastel blue border for light mode
                     boxShadow: 'none',
-                    background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
+                    background: themeMode === 'dark' 
+                      ? `linear-gradient(135deg, #0D1B2A, #13293D)` // Keep dark mode gradient
+                      : `linear-gradient(135deg, #E4ECFD, #F0F5FF)`, // Pastel blue gradient for light mode
                     overflowX: 'hidden',
-                    transition: 'width 0.3s ease'
+                    transition: 'width 0.3s ease',
+                    marginTop: 0, // Remove any margin at the top
+                    top: '64px', // Position directly below AppBar
+                    height: 'calc(100% - 64px)' // Adjust height to account for AppBar
                   },
                   display: { xs: 'none', md: 'block' }
                 }}
               >
-                <Toolbar /> {/* For spacing under the AppBar */}
+                {/* Remove the Toolbar spacer that creates the gap */}
                 {drawer}
               </Drawer>
 
@@ -1041,7 +1051,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 sx={{
                   position: 'fixed',
                   left: sidebarWidth - 3,
-                  top: '50%',
+                  top: 'calc(50% + 32px)', // Adjust position to account for AppBar
                   transform: 'translateY(-50%)',
                   height: '160px',
                   width: '18px',
@@ -1124,10 +1134,10 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               flexGrow: 1, 
               p: 3,
               width: { md: `calc(100% - ${sidebarWidth}px)` },
-              marginTop: "64px", // Height of AppBar
-              backgroundColor: 'transparent',
+              marginTop: "64px", // Keep the same AppBar height
+              backgroundColor: themeMode === 'dark' ? '#0A1522' : '#F0F5FF', // Pastel blue background for light mode
               position: 'relative',
-              background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
+              background: themeMode === 'dark' ? '#0A1522' : '#F0F5FF', // Pastel blue background for light mode
               backgroundImage: 'none', // Remove pattern
               transition: 'width 0.3s ease',
               '&::after': {
@@ -1137,7 +1147,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 left: 0,
                 right: 0,
                 height: '240px',
-                background: `linear-gradient(135deg, rgba(196, 90, 20, 0.15), rgba(244, 124, 41, 0.1))`, // Orange accent
+                background: themeMode === 'dark' 
+                  ? `linear-gradient(135deg, rgba(196, 90, 20, 0.15), rgba(244, 124, 41, 0.1))` // Orange accent for dark mode
+                  : `linear-gradient(135deg, rgba(138, 171, 242, 0.2), rgba(166, 193, 255, 0.15))`, // Pastel blue accent for light mode
                 zIndex: -1,
                 borderRadius: '0 0 30px 30px',
               }
@@ -1182,10 +1194,12 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             py: 4,
             px: 2,
             mt: 'auto',
-            background: '#0D1B2A', // Flat background color
-            borderTop: `1px solid rgba(255, 255, 255, 0.05)`, // Updated border
+            background: themeMode === 'dark' ? '#0D1B2A' : '#E4ECFD', // Pastel blue for light mode
+            borderTop: themeMode === 'dark' 
+              ? `1px solid rgba(255, 255, 255, 0.05)` // Keep dark mode border
+              : `1px solid rgba(138, 171, 242, 0.3)`, // Pastel blue border for light mode
             position: 'relative',
-            backgroundImage: 'none', // Remove pattern
+            backgroundImage: 'none',
           }}
         >
           <Container maxWidth="lg">
@@ -1202,7 +1216,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 variant="subtitle2" 
                 sx={{ 
                   fontWeight: 600, 
-                  color: '#F47C29', // Orange color
+                  color: themeMode === 'dark' ? '#F47C29' : '#8AABF2', // Pastel blue for light mode
                   mb: 0.5
                 }}
               >
@@ -1211,7 +1225,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               <Typography 
                 variant="body2" 
                 sx={{ 
-                  color: 'white',
+                  color: themeMode === 'dark' ? 'white' : '#4A5568', // Darker text for light mode
                   mb: 1
                 }}
               >
@@ -1220,7 +1234,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               <Typography 
                 variant="caption" 
                 sx={{ 
-                  color: 'rgba(255,255,255,0.5)'
+                  color: themeMode === 'dark' ? 'rgba(255,255,255,0.5)' : 'rgba(74,85,104,0.7)' // Adjusted opacity for light mode
                 }}
               >
                 Made by Haroon, Azmeer, Khadija, Uswa.
