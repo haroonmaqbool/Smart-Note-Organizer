@@ -144,3 +144,43 @@ If you see a warning about ports already being in use:
 1. Make sure both services are running
 2. Check if the backend is accessible at http://localhost:5000/api/health
 3. Verify that the Vite proxy configuration is correct in `frontend/vite.config.ts`
+
+# AI Integration
+
+This project uses LLaMA 3.3 70B Instruct via the OpenRouter API for AI capabilities including:
+- Generating flashcards from notes
+- Automatic tag generation
+- Content summarization
+
+## Setting Up AI Integration
+
+1. **Environment Variables**:
+   The app uses environment variables for API keys. Create or update the following files:
+   
+   - `.env` in the project root
+   - `frontend/.env` for frontend-specific variables
+   - `backend/.env` for backend-specific variables
+
+2. **API Keys**:
+   You'll need an OpenRouter API key. Add this to your environment files:
+   ```
+   OPENROUTER_API_KEY=your-key-here
+   ```
+   
+   For security, never commit your real API keys to version control.
+
+3. **AI Model Configuration**:
+   The app is configured to use Meta's LLaMA 3.3 70B Instruct model. You can change this by modifying the `AI_MODEL` environment variable:
+   ```
+   AI_MODEL=meta-llama/llama-3.3-70b-instruct:free
+   ```
+   
+   Other available models can be found on the [OpenRouter website](https://openrouter.ai/docs).
+
+4. **Required Python Dependencies**:
+   Install the required dependencies for the Python backend:
+   ```bash
+   pip install python-dotenv requests
+   ```
+   
+   These are included in the `backend/requirements.txt` file.

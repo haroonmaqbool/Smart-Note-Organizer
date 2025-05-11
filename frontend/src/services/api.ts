@@ -6,9 +6,13 @@
 // Get environment variable - since TypeScript definitions for import.meta.env can be problematic,
 // we'll use a simpler approach for this project
 let envApiBaseUrl: string | undefined;
+let openRouterApiKey: string | undefined;
+
 try {
   // @ts-ignore - Vite specific property
   envApiBaseUrl = import.meta.env?.VITE_API_BASE_URL;
+  // @ts-ignore - Vite specific property
+  openRouterApiKey = import.meta.env?.VITE_OPENROUTER_API_KEY;
 } catch (e) {
   console.warn('Could not access import.meta.env', e);
 }
@@ -19,13 +23,17 @@ const isDevelopment = window.location.hostname === 'localhost' || window.locatio
 // FIXME: Explicitly set the backend URL for development
 export let API_BASE_URL = 'http://localhost:8000/api';
 
-// OpenRouter API Key - Using a valid public key for demonstration
-// In a production environment, this should be stored securely and obtained from environment variables
-const OPENROUTER_API_KEY = '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';
+// OpenRouter API Key - Default to env variable, and only use this for development
+// Note: The API key should be set in the .env file of your project
+const OPENROUTER_API_KEY = openRouterApiKey || '';
+
+// The model to use for all AI operations
+export const AI_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
 
 // Debug information to help troubleshoot connection issues
 console.log(`API Base URL: ${API_BASE_URL}`);
 console.log(`Using ${envApiBaseUrl ? 'environment variable' : 'direct URL'} for API URL`);
+console.log(`AI Model: ${AI_MODEL}`);
 
 // Global connectivity state
 export let isConnected = false;
@@ -167,7 +175,7 @@ export interface Summary {
 // Add this function before the api object definition
 async function generateTagsWithOpenRouter(text: string): Promise<{ tags: string[], model_used: string } | null> {
   try {
-    console.log('Attempting OpenRouter API for tag generation...');
+    console.log(`Attempting OpenRouter API for tag generation using ${AI_MODEL}...`);
     
     // Improved system prompt for better tag generation
     const systemPrompt = `You are an expert tagging system that identifies the most relevant topic tags from text content.
@@ -188,7 +196,7 @@ Example of good tags for programming content: ["react hooks", "state management"
     // Improved user prompt
     const userPrompt = `Extract the most relevant tags from this content (consider domain, subject matter, key concepts, and specific terminology):\n\n${text.substring(0, 2000)}${text.length > 2000 ? '...' : ''}`;
 
-    console.log('Sending request to OpenRouter with API key:', OPENROUTER_API_KEY.substring(0, 10) + '...');
+    console.log('Sending request to OpenRouter...');
     
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -199,7 +207,7 @@ Example of good tags for programming content: ["react hooks", "state management"
         "X-Title": "NoteNest",
       },
       body: JSON.stringify({
-        "model": "anthropic/claude-3-haiku:free",
+        "model": AI_MODEL,
         "messages": [
           {
             "role": "system",
@@ -292,7 +300,7 @@ Example of good tags for programming content: ["react hooks", "state management"
             console.log('OpenRouter API successfully generated tags:', cleanedTags);
             return { 
               tags: cleanedTags, 
-              model_used: "openrouter-claude3" 
+              model_used: `openrouter-${AI_MODEL.split('/').pop()}` 
             };
           }
         }
@@ -311,7 +319,7 @@ Example of good tags for programming content: ["react hooks", "state management"
 // Helper function to generate flashcards with OpenRouter API
 async function generateFlashcardsWithOpenRouter(content: string, title?: string, tags?: string[]): Promise<ChatbotResponse | null> {
   try {
-    console.log('Attempting OpenRouter API for flashcard generation');
+    console.log(`Attempting OpenRouter API for flashcard generation using ${AI_MODEL}`);
     const systemPrompt = `You are an expert educational content creator specializing in creating high-quality flashcards that promote deep learning and critical thinking.
 
 When creating flashcards, follow these principles:
@@ -332,7 +340,7 @@ Return ONLY a JSON object with the following format:
   ],
   "tags": ["tag1", "tag2"],
   "summary": "Brief summary of the content",
-  "model_used": "openrouter-claude3"
+  "model_used": "llama-3.3-70b"
 }`;
 
     const userPrompt = `Create flashcards from this content${title ? ' titled "' + title + '"' : ''}${tags && tags.length > 0 ? ' with tags: ' + tags.join(', ') : ''}:\n\n${content.substring(0, 3000)}`;
@@ -346,7 +354,7 @@ Return ONLY a JSON object with the following format:
         "X-Title": "NoteNest",
       },
       body: JSON.stringify({
-        "model": "anthropic/claude-3-haiku:free",
+        "model": AI_MODEL,
         "messages": [
           {
             "role": "system",
@@ -394,7 +402,7 @@ Return ONLY a JSON object with the following format:
               flashcards: result.flashcards,
               tags: result.tags,
               summary: result.summary,
-              model_used: "openrouter-claude3"
+              model_used: `openrouter-${AI_MODEL.split('/').pop()}`
             };
           }
         }
