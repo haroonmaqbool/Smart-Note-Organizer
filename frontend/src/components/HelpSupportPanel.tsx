@@ -193,7 +193,7 @@ const HelpSupportPanel: React.FC<HelpSupportPanelProps> = ({ open, onClose }) =>
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Find answers to common questions below. If you need additional help, 
-            please contact us at <Box component="span" sx={{ color: theme.palette.primary.main, fontWeight: 500 }}>support@notenest.com</Box>
+            please contact us at <Box component="span" sx={{ color: theme.palette.primary.main, fontWeight: 500 }}>fakhirshaheen@fccollege.edu.pk</Box>
           </Typography>
         </Paper>
 
