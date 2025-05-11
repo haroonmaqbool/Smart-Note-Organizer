@@ -18,6 +18,7 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
+  DialogContentText,
   DialogActions,
   CircularProgress,
   Snackbar,
@@ -34,9 +35,10 @@ import {
   DateRange as DateRangeIcon,
   Label as LabelIcon,
   Psychology as PsychologyIcon,
-  Clear as ClearIcon
+  Clear as ClearIcon,
+  DeleteOutlined as DeleteIcon
 } from '@mui/icons-material';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { api, Flashcard as ApiFlashcard } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
@@ -48,6 +50,7 @@ const Dashboard: React.FC = () => {
   const { state, dispatch } = useApp();
   const { notes } = state;
   const theme = useTheme();
+  const navigate = useNavigate();
 
   // State for AI flashcard generation
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
@@ -59,9 +62,13 @@ const Dashboard: React.FC = () => {
     message: '', 
     severity: 'success' as 'success' | 'error' | 'info' | 'warning' 
   });
+
+  // Add state for delete confirmation dialog
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
   
-  // Add state for tag filtering
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  // Add state for clear dashboard confirmation dialog
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   // Calculate some stats
   const totalNotes = notes.length;
@@ -75,11 +82,6 @@ const Dashboard: React.FC = () => {
   
   // Sort tags by frequency
   const sortedTags = Object.keys(tagFrequency).sort((a, b) => tagFrequency[b] - tagFrequency[a]);
-  
-  // Filter notes by selected tag
-  const filteredNotes = selectedTag 
-    ? notes.filter(note => note.tags.includes(selectedTag))
-    : notes;
     
   const recentlyUpdated = [...notes].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
@@ -172,8 +174,57 @@ const Dashboard: React.FC = () => {
     setNotification({ ...notification, open: false });
   };
 
+  // Add function to handle note deletion
+  const handleDeleteNote = (noteId: string, event: React.MouseEvent) => {
+    // Stop event propagation to prevent navigation to editor
+    event.stopPropagation();
+    setNoteToDelete(noteId);
+    setDeleteDialogOpen(true);
+  };
+
+  // Function to confirm and execute note deletion
+  const confirmDeleteNote = () => {
+    if (noteToDelete) {
+      dispatch({ type: 'DELETE_NOTE', payload: noteToDelete });
+      setDeleteDialogOpen(false);
+      setNoteToDelete(null);
+      setNotification({
+        open: true,
+        message: 'Note deleted successfully',
+        severity: 'success'
+      });
+    }
+  };
+
+  // Function to cancel note deletion
+  const cancelDeleteNote = () => {
+    setDeleteDialogOpen(false);
+    setNoteToDelete(null);
+  };
+
+  // Function to handle clear dashboard confirmation
+  const handleClearDashboard = () => {
+    setClearDialogOpen(true);
+  };
+
+  // Function to confirm and execute clear dashboard
+  const confirmClearDashboard = () => {
+    dispatch({ type: 'CLEAR_NOTES' });
+    setClearDialogOpen(false);
+    setNotification({
+      open: true,
+      message: 'All notes have been cleared',
+      severity: 'info'
+    });
+  };
+
+  // Function to cancel clear dashboard
+  const cancelClearDashboard = () => {
+    setClearDialogOpen(false);
+  };
+
   return (
-    <Box className="fade-in">
+    <Box className="fade-in" sx={{ px: { xs: 1, sm: 2 } }}>
       {/* Header Section */}
       <Box sx={{ 
         display: 'flex', 
@@ -190,16 +241,7 @@ const Dashboard: React.FC = () => {
           <Button 
             variant="outlined" 
             color="error"
-            onClick={() => {
-              if (window.confirm('Are you sure you want to clear all notes? This cannot be undone.')) {
-                dispatch({ type: 'CLEAR_NOTES' });
-                setNotification({
-                  open: true,
-                  message: 'All notes have been cleared',
-                  severity: 'info'
-                });
-              }
-            }}
+            onClick={handleClearDashboard}
             sx={{
               px: 2,
               py: 1.2,
@@ -273,85 +315,40 @@ const Dashboard: React.FC = () => {
         </Grid>
       </Paper>
 
-      {/* Main Content Grid - Just show all notes, no search or tag filter */}
+      {/* Main Content Grid - Full-width Notes Section */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Paper elevation={0} sx={{ 
             p: 3, 
             borderRadius: 2, 
             border: `1px solid ${theme.palette.divider}`,
-            height: '100%',
-            maxHeight: { xs: '600px', md: 'auto' },
-            overflow: { xs: 'auto', md: 'visible' }
+            height: { xs: 'auto', md: '650px' }, // Slightly increased height for full-width display
+            minHeight: '400px', // Minimum height
+            maxHeight: { xs: '80vh', md: '650px' }, // Responsive max height 
+            display: 'flex',
+            flexDirection: 'column'
           }}>
             <Box sx={{ 
               display: 'flex', 
               justifyContent: 'space-between', 
               alignItems: 'center', 
-              mb: 3 
+              mb: 3,
+              flexShrink: 0 // Prevent header from shrinking
             }}>
               <Typography variant="h5" sx={{ fontWeight: 600 }}>
-                My Notes {selectedTag && `- Tagged: ${selectedTag}`}
+                My Notes
               </Typography>
-              <Box>
-                <Button 
-                  component={Link} 
-                  to="/search"
-                  endIcon={<ArrowForwardIcon />}
-                  sx={{ fontWeight: 500 }}
-                >
-                  View All
-                </Button>
-              </Box>
             </Box>
-            <Divider sx={{ mb: 3 }} />
+            <Divider sx={{ mb: 3, flexShrink: 0 }} />
             
-            {/* Tag Cloud */}
-            {sortedTags.length > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Filter by Tag:
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                  {selectedTag && (
-                    <Chip 
-                      label="Clear Filter"
-                      onClick={() => setSelectedTag(null)}
-                      color="default"
-                      onDelete={() => setSelectedTag(null)}
-                      deleteIcon={<ClearIcon />}
-                      sx={{ 
-                        borderRadius: '16px',
-                        mb: 1,
-                        bgcolor: alpha(theme.palette.error.main, 0.1),
-                        color: theme.palette.error.main
-                      }}
-                    />
-                  )}
-                  {sortedTags.slice(0, 10).map(tag => (
-                    <Chip 
-                      key={tag}
-                      label={tag}
-                      onClick={() => setSelectedTag(tag === selectedTag ? null : tag)}
-                      color={tag === selectedTag ? "primary" : "default"}
-                      sx={{ 
-                        borderRadius: '16px',
-                        fontWeight: tag === selectedTag ? 'bold' : 'normal',
-                        fontSize: `${Math.min(14 + tagFrequency[tag] * 0.5, 18)}px`
-                      }}
-                    />
-                  ))}
-                </Box>
-              </Box>
-            )}
-            
-            {filteredNotes.length === 0 ? (
+            {notes.length === 0 ? (
               <Box sx={{ 
                 display: 'flex', 
                 flexDirection: 'column', 
                 alignItems: 'center', 
                 justifyContent: 'center',
-                py: 6
+                py: 6,
+                flexGrow: 1
               }}>
                 <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
                   You haven't created any notes yet.
@@ -366,157 +363,180 @@ const Dashboard: React.FC = () => {
                 </Button>
               </Box>
             ) : (
-              <Grid container spacing={2}>
-                {filteredNotes.map((note) => (
-                  <Grid item xs={12} key={note.id}>
-                    <Card sx={{ 
-                      borderRadius: 2,
-                      transition: 'all 0.3s ease',
-                      '&:hover': {
-                        boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
-                        transform: 'translateY(-3px)'
-                      },
-                      p: 1
-                    }}>
-                      <CardContent>
-                        <Typography variant="h6" component="h2" gutterBottom>
-                          {note.title}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          {note.summary || "No summary available"}
-                        </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-                          {note.tags.map((tag) => (
-                            <Chip 
-                              key={tag} 
-                              label={tag} 
-                              size="small" 
-                              color="primary"
-                              sx={{ 
-                                borderRadius: '16px',
-                                px: 1,
-                                '&:hover': {
-                                  backgroundColor: alpha(theme.palette.primary.main, 0.2),
-                                }
-                              }}
-                            />
-                          ))}
-                        </Box>
-                        <Typography variant="caption" color="text.secondary">
-                          Last updated: {new Date(note.updatedAt).toLocaleDateString()}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
+              <Box 
+                sx={{ 
+                  overflowY: 'auto', 
+                  flexGrow: 1,
+                  pr: 1, // Add padding for scrollbar
+                  mt: 0, // No top margin
+                  // Custom scrollbar styling
+                  '&::-webkit-scrollbar': {
+                    width: '8px',
+                    backgroundColor: 'transparent',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: alpha(theme.palette.primary.main, 0.05),
+                    borderRadius: '10px',
+                    margin: '4px 0',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    background: alpha(theme.palette.primary.main, 0.2),
+                    borderRadius: '10px',
+                    border: `2px solid transparent`,
+                    backgroundClip: 'padding-box',
+                    '&:hover': {
+                      background: alpha(theme.palette.primary.main, 0.3),
+                      border: `2px solid transparent`,
+                      backgroundClip: 'padding-box',
+                    },
+                  },
+                  // Firefox scrollbar
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: `${alpha(theme.palette.primary.main, 0.2)} ${alpha(theme.palette.primary.main, 0.05)}`,
+                }}
+              >
+                {/* For each row of three notes */}
+                {Array.from({ length: Math.ceil(notes.length / 3) }).map((_, rowIndex) => (
+                  <Box 
+                    key={`row-${rowIndex}`} 
+                    sx={{ 
+                      display: 'flex',
+                      flexDirection: 'row',
+                      gap: 2,
+                      mb: 2,
+                      width: '100%'
+                    }}
+                  >
+                    {notes.slice(rowIndex * 3, rowIndex * 3 + 3).map((note) => (
+                      <Card 
+                        key={note.id}
+                        sx={{ 
+                          borderRadius: 2,
+                          transition: 'all 0.3s ease',
+                          width: 'calc(33.33% - 11px)', // Account for gap
+                          display: 'flex',
+                          flexDirection: 'column',
+                          '&:hover': {
+                            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+                            transform: 'translateY(-3px)',
+                            cursor: 'pointer'
+                          },
+                          p: 1,
+                          position: 'relative' // For positioning the delete button
+                        }}
+                        onClick={() => navigate(`/editor?id=${note.id}`)}
+                      >
+                        {/* Delete button in top-right corner */}
+                        <IconButton
+                          size="small"
+                          color="error"
+                          sx={{
+                            position: 'absolute',
+                            top: 8,
+                            right: 8,
+                            zIndex: 10,
+                            bgcolor: alpha(theme.palette.background.paper, 0.7),
+                            '&:hover': {
+                              bgcolor: alpha(theme.palette.error.light, 0.2),
+                            },
+                            transition: 'all 0.2s ease'
+                          }}
+                          onClick={(e) => handleDeleteNote(note.id, e)}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                        
+                        <CardContent sx={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+                          <Typography 
+                            variant="h6" 
+                            component="h2" 
+                            gutterBottom
+                            sx={{
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              wordBreak: 'break-word',
+                              lineHeight: 1.4,
+                              maxWidth: '100%',
+                              pr: 4 // Add padding to prevent text from overlapping with delete button
+                            }}
+                          >
+                            {note.title.startsWith('Title:') ? note.title.substring(6).trim() : note.title}
+                          </Typography>
+                          <Typography 
+                            variant="body2" 
+                            color="text.secondary" 
+                            sx={{ 
+                              mb: 2,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                              maxWidth: '100%'
+                            }}
+                          >
+                            {note.summary || "No summary available"}
+                          </Typography>
+                          <Box sx={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap', 
+                            gap: 1, 
+                            mb: 2,
+                            maxWidth: '100%',
+                            mt: 'auto'
+                          }}>
+                            {note.tags.slice(0, 3).map((tag) => (
+                              <Chip 
+                                key={tag} 
+                                label={tag} 
+                                size="small" 
+                                color="primary"
+                                sx={{ 
+                                  borderRadius: '16px',
+                                  px: 1,
+                                  maxWidth: { xs: '100%', sm: '100%', md: '100px' },
+                                  '& .MuiChip-label': {
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                    maxWidth: '100%'
+                                  },
+                                  '&:hover': {
+                                    backgroundColor: alpha(theme.palette.primary.main, 0.2),
+                                  }
+                                }}
+                              />
+                            ))}
+                            {note.tags.length > 3 && (
+                              <Chip
+                                label={`+${note.tags.length - 3} more`}
+                                size="small"
+                                variant="outlined"
+                                sx={{ borderRadius: '16px' }}
+                              />
+                            )}
+                          </Box>
+                          <Typography 
+                            variant="caption" 
+                            color="text.secondary"
+                            sx={{
+                              display: 'block',
+                              textAlign: 'right',
+                              mt: 'auto'
+                            }}
+                          >
+                            Last updated: {new Date(note.updatedAt).toLocaleDateString()}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </Box>
                 ))}
-              </Grid>
+              </Box>
             )}
-          </Paper>
-        </Grid>
-        
-        {/* Right Column: Quick Tools Section */}
-        <Grid item xs={12} md={4}>
-          <Paper elevation={0} sx={{ 
-            p: 3, 
-            borderRadius: 2, 
-            border: `1px solid ${theme.palette.divider}`,
-            height: '100%',
-            maxHeight: { xs: 'auto', md: '100%' }
-          }}>
-            <Typography variant="h5" sx={{ mb: 3, fontWeight: 600 }}>
-              Quick Tools
-            </Typography>
-            
-            <Divider sx={{ mb: 3 }} />
-            
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Card
-                sx={{ 
-                  p: 2, 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  backgroundColor: alpha(theme.palette.primary.main, 0.05),
-                  borderRadius: 2,
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.primary.main, 0.1),
-                    transform: 'translateY(-5px)'
-                  }
-                }}
-                component={Link}
-                to="/search"
-              >
-                <Avatar sx={{ bgcolor: theme.palette.primary.main, mr: 2 }}>
-                  <SearchIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Search Notes
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Find your notes by content or tags
-                  </Typography>
-                </Box>
-              </Card>
-              
-              <Card
-                sx={{ 
-                  p: 2, 
-                  display: 'flex',
-                  alignItems: 'center',
-                  backgroundColor: alpha(theme.palette.secondary.main, 0.05),
-                  borderRadius: 2,
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.secondary.main, 0.1),
-                    transform: 'translateY(-5px)'
-                  }
-                }}
-                component={Link}
-                to="/flashcards"
-              >
-                <Avatar sx={{ bgcolor: theme.palette.secondary.main, mr: 2 }}>
-                  <SchoolIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Flashcards
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Review and study with flashcards
-                  </Typography>
-                </Box>
-              </Card>
-              
-              <Card
-                sx={{ 
-                  p: 2, 
-                  display: 'flex', 
-                  alignItems: 'center',
-                  backgroundColor: alpha(theme.palette.info.main, 0.05),
-                  borderRadius: 2,
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    backgroundColor: alpha(theme.palette.info.main, 0.1),
-                    transform: 'translateY(-5px)'
-                  }
-                }}
-                component={Link}
-                to="/editor"
-              >
-                <Avatar sx={{ bgcolor: theme.palette.info.main, mr: 2 }}>
-                  <AddIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    Create Note
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Create a new note with AI assistance
-                  </Typography>
-                </Box>
-              </Card>
-            </Box>
           </Paper>
         </Grid>
       </Grid>
@@ -598,6 +618,56 @@ const Dashboard: React.FC = () => {
             disabled={isGenerating || generatedFlashcards.length === 0}
           >
             Save Flashcards
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={cancelDeleteNote}
+        aria-labelledby="delete-dialog-title"
+        aria-describedby="delete-dialog-description"
+      >
+        <DialogTitle id="delete-dialog-title">
+          Delete Note
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="delete-dialog-description">
+            Are you sure you want to delete this note? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelDeleteNote} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={confirmDeleteNote} color="error" variant="contained">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Clear Dashboard Confirmation Dialog */}
+      <Dialog
+        open={clearDialogOpen}
+        onClose={cancelClearDashboard}
+        aria-labelledby="clear-dialog-title"
+        aria-describedby="clear-dialog-description"
+      >
+        <DialogTitle id="clear-dialog-title">
+          Clear Dashboard
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="clear-dialog-description">
+            Are you sure you want to clear all your notes? This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={cancelClearDashboard} color="primary">
+            Cancel
+          </Button>
+          <Button onClick={confirmClearDashboard} color="error" variant="contained">
+            Confirm
           </Button>
         </DialogActions>
       </Dialog>
