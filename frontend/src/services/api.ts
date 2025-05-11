@@ -3,16 +3,18 @@
 // 1. In development: Use the proxy setup, but with better error handling
 // 2. In production: Use the full backend URL
 
-// Get environment variable - since TypeScript definitions for import.meta.env can be problematic,
-// we'll use a simpler approach for this project
+// Get environment variable
 let envApiBaseUrl: string | undefined;
 let openRouterApiKey: string | undefined;
+let aiModel: string | undefined;
 
 try {
   // @ts-ignore - Vite specific property
   envApiBaseUrl = import.meta.env?.VITE_API_BASE_URL;
   // @ts-ignore - Vite specific property
   openRouterApiKey = import.meta.env?.VITE_OPENROUTER_API_KEY;
+  // @ts-ignore - Vite specific property
+  aiModel = import.meta.env?.VITE_AI_MODEL;
 } catch (e) {
   console.warn('Could not access import.meta.env', e);
 }
@@ -20,15 +22,14 @@ try {
 // Check if we're in development mode
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// FIXME: Explicitly set the backend URL for development
-export let API_BASE_URL = 'http://localhost:8000/api';
+// Set the API base URL based on environment
+export let API_BASE_URL = envApiBaseUrl || 'http://localhost:8000/api';
 
-// OpenRouter API Key - Default to env variable, and only use this for development
-// Note: The API key should be set in the .env file of your project
+// Use the API key from environment or fallback
 const OPENROUTER_API_KEY = openRouterApiKey || '';
 
-// The model to use for all AI operations
-export const AI_MODEL = "meta-llama/llama-3.3-70b-instruct:free";
+// Set AI model from environment or default
+export const AI_MODEL = aiModel || "meta-llama/llama-3.3-70b-instruct:free";
 
 // Debug information to help troubleshoot connection issues
 console.log(`API Base URL: ${API_BASE_URL}`);
