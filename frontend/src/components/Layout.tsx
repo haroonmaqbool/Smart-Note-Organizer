@@ -45,6 +45,7 @@ import {
   ChevronLeft as ChevronLeftIcon,
   ChevronRight as ChevronRightIcon
 } from '@mui/icons-material';
+import HelpSupportPanel from './HelpSupportPanel';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -65,6 +66,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
   // Add user menu state
   const [userMenuAnchor, setUserMenuAnchor] = React.useState<null | HTMLElement>(null);
   const userMenuOpen = Boolean(userMenuAnchor);
+  
+  // Add help support panel state
+  const [helpPanelOpen, setHelpPanelOpen] = React.useState(false);
 
   // Add user info state from localStorage
   const [userName, setUserName] = React.useState<string>('User');
@@ -107,6 +111,14 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
 
   const handleUserMenuClose = () => {
     setUserMenuAnchor(null);
+  };
+  
+  const handleHelpPanelOpen = () => {
+    setHelpPanelOpen(true);
+  };
+  
+  const handleHelpPanelClose = () => {
+    setHelpPanelOpen(false);
   };
 
   const handleLogout = () => {
@@ -272,6 +284,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             <IconButton 
               color="primary"
               sx={{ mb: 1 }}
+              onClick={handleHelpPanelOpen}
             >
               <HelpIcon fontSize="small" />
             </IconButton>
@@ -281,6 +294,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             variant="outlined" 
             fullWidth 
             startIcon={<HelpIcon />}
+            onClick={handleHelpPanelOpen}
             sx={{ 
               mb: 1,
               justifyContent: 'flex-start',
@@ -321,6 +335,12 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      {/* Help & Support Panel */}
+      <HelpSupportPanel 
+        open={helpPanelOpen} 
+        onClose={handleHelpPanelClose} 
+      />
+      
       <AppBar position="fixed" color="primary" elevation={0} sx={{ 
         zIndex: theme.zIndex.drawer + 1,
         backgroundColor: alpha(theme.palette.background.paper, 0.9),
