@@ -1,9 +1,9 @@
-from django.shortcuts import render
+from django.shortcuts import render, get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import api_view, parser_classes
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
-from .models import Note, Flashcard
+from .models import Note, Flashcard, Summary
 from .serializers import NoteSerializer, FlashcardSerializer
 from .ai_utils import (
     summarize_text, tag_text, extract_text_from_pdf, 
@@ -21,6 +21,8 @@ import PyPDF2
 import docx
 from pptx import Presentation
 import logging
+import time
+from datetime import datetime
 
 # Load initial mock data into database
 def load_mock_data():
@@ -690,3 +692,145 @@ def batch_create_flashcards(request):
     if errors:
         return Response({'created': created, 'errors': errors}, status=status.HTTP_207_MULTI_STATUS)
     return Response(created, status=status.HTTP_201_CREATED)
+
+# Summary Viewset
+class SummaryViewSet(viewsets.ViewSet):
+    def list(self, request):
+        summaries = Summary.objects.all().order_by('-created_at')
+        data = []
+        for summary in summaries:
+            data.append({
+                "id": summary.id,
+                "title": summary.title,
+                "summary_text": summary.summary_text,
+                "original_text": summary.original_text,
+                "tags": summary.tags,
+                "created_at": summary.created_at,
+                "updated_at": summary.updated_at,
+                "model_used": summary.model_used
+            })
+        return Response(data)
+
+    def retrieve(self, request, pk=None):
+        summary = get_object_or_404(Summary, pk=pk)
+        data = {
+            "id": summary.id,
+            "title": summary.title,
+            "summary_text": summary.summary_text,
+            "original_text": summary.original_text,
+            "tags": summary.tags,
+            "created_at": summary.created_at,
+            "updated_at": summary.updated_at,
+            "model_used": summary.model_used
+        }
+        return Response(data)
+
+    def create(self, request):
+        summary_data = request.data
+        summary = Summary.objects.create(
+            id=summary_data["id"],
+            title=summary_data.get("title", "Untitled Summary"),
+            original_text=summary_data["original_text"],
+            summary_text=summary_data["summary_text"],
+            tags=summary_data.get("tags", []),
+            model_used=summary_data.get("model_used", "openrouter-default")
+        )
+        return Response({
+            "id": summary.id,
+            "title": summary.title,
+            "summary_text": summary.summary_text,
+            "original_text": summary.original_text,
+            "tags": summary.tags,
+            "created_at": summary.created_at,
+            "updated_at": summary.updated_at,
+            "model_used": summary.model_used
+        }, status=status.HTTP_201_CREATED)
+
+    def update(self, request, pk=None):
+        summary = get_object_or_404(Summary, pk=pk)
+        summary_data = request.data
+        
+        if "title" in summary_data:
+            summary.title = summary_data["title"]
+        if "summary_text" in summary_data:
+            summary.summary_text = summary_data["summary_text"]
+        if "original_text" in summary_data:
+            summary.original_text = summary_data["original_text"]
+        if "tags" in summary_data:
+            summary.tags = summary_data["tags"]
+        
+        summary.save()
+        
+        return Response({
+            "id": summary.id,
+            "title": summary.title,
+            "summary_text": summary.summary_text,
+            "original_text": summary.original_text,
+            "tags": summary.tags,
+            "created_at": summary.created_at,
+            "updated_at": summary.updated_at,
+            "model_used": summary.model_used
+        })
+
+    def destroy(self, request, pk=None):
+        summary = get_object_or_404(Summary, pk=pk)
+        summary.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+# Add this after the existing summarize endpoint 
+@api_view(['POST'])
+def create_summary(request):
+    """Create a new summary with generated summary text"""
+    try:
+        # Parse request data
+        if hasattr(request, 'data'):
+            data = request.data
+        else:
+            data = json.loads(request.body)
+        
+        text = data.get("text", "")
+        title = data.get("title", "Untitled Summary")
+        ai_model = data.get("ai_model", None)
+        
+        if not text:
+            return Response({"error": "Text content is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Log the request
+        print(f"Creating summary for text ({len(text)} chars) with title: {title}")
+        
+        # Generate summary using AI
+        result = summarize_text(text, ai_model)
+        summary_text = result["summary"]
+        model_used = result["model_used"]
+        
+        # Generate tags for the summary
+        tags_result = tag_text(text, ai_model)
+        tags = tags_result.get("tags", [])
+        
+        # Create unique ID
+        unique_id = f"summary-{int(time.time() * 1000)}"
+        
+        # Create summary in database
+        summary = Summary.objects.create(
+            id=unique_id,
+            title=title,
+            original_text=text,
+            summary_text=summary_text,
+            tags=tags,
+            model_used=model_used
+        )
+        
+        # Return the created summary
+        return Response({
+            "id": summary.id,
+            "title": summary.title,
+            "summary_text": summary.summary_text,
+            "original_text": summary.original_text,
+            "tags": summary.tags,
+            "created_at": summary.created_at,
+            "updated_at": summary.updated_at,
+            "model_used": model_used
+        }, status=status.HTTP_201_CREATED)
+    except Exception as e:
+        print(f"Error in create_summary: {str(e)}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
