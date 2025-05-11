@@ -41,7 +41,9 @@ import {
   Home as HomeIcon,
   LightMode as LightModeIcon,
   DarkMode as DarkModeIcon,
-  Notifications as NotificationsIcon
+  Notifications as NotificationsIcon,
+  ChevronLeft as ChevronLeftIcon,
+  ChevronRight as ChevronRightIcon
 } from '@mui/icons-material';
 
 interface LayoutProps {
@@ -56,6 +58,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const location = useLocation();
+  
+  // Add state for sidebar collapse
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   
   // Add user menu state
   const [userMenuAnchor, setUserMenuAnchor] = React.useState<null | HTMLElement>(null);
@@ -75,10 +80,25 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
     if (storedName) setUserName(storedName);
     if (storedEmail) setUserEmail(storedEmail);
     if (storedRole) setUserRole(storedRole);
+
+    // Load sidebar collapsed state from localStorage
+    const storedSidebarState = localStorage.getItem('sidebarCollapsed');
+    if (storedSidebarState) {
+      setSidebarCollapsed(storedSidebarState === 'true');
+    }
   }, []);
+
+  // Save sidebar state to localStorage when changed
+  React.useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', sidebarCollapsed.toString());
+  }, [sidebarCollapsed]);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
+  };
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
   };
 
   const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -108,8 +128,19 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
 
   const isActive = (path: string) => location.pathname === path;
 
+  // Define sidebar widths
+  const expandedWidth = 280;
+  const collapsedWidth = 70;
+  const sidebarWidth = sidebarCollapsed ? collapsedWidth : expandedWidth;
+
   const drawer = (
-    <Box sx={{ width: 280, display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ 
+      width: '100%', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      height: '100%', 
+      overflow: 'hidden' // Remove scrollbars
+    }}>
       <Box sx={{ 
         display: 'flex', 
         flexDirection: 'column',
@@ -123,12 +154,14 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
         backgroundSize: '80px 80px',
         backgroundRepeat: 'repeat',
       }}>
+        {/* Remove the top right toggle button since we'll add a centered one */}
+        
         <Box
           sx={{
-            width: 70,
-            height: 70,
+            width: sidebarCollapsed ? 50 : 70,
+            height: sidebarCollapsed ? 50 : 70,
             borderRadius: '10px',
-            background: 'rgba(255, 255, 255, 0.9)',
+            background: '#FFFFFF', // Solid white background for better contrast
             mb: 1,
             boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             display: 'flex',
@@ -137,7 +170,8 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             overflow: 'hidden',
             position: 'relative',
             padding: '6px',
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
+            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+            transition: 'all 0.3s ease',
           }}
         >
           <img 
@@ -150,11 +184,22 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             }} 
           />
         </Box>
-        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, display: sidebarCollapsed ? 'none' : 'block' }}>
           NoteNest
         </Typography>
-        <Typography variant="body2" sx={{ opacity: 0.8 }}>
-          Your cozy note-taking home
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            opacity: 0.8,
+            display: sidebarCollapsed ? 'none' : 'block',
+            textAlign: 'center',
+            fontSize: '0.85rem',
+            fontStyle: 'italic',
+            mt: 0.5,
+            fontWeight: 500
+          }}
+        >
+          Think it. Note it. Own it.
         </Typography>
       </Box>
       
@@ -173,6 +218,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               mb: 1,
               mx: 1,
               borderRadius: 2,
+              justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               '&.Mui-selected': {
                 background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
                 color: 'white',
@@ -184,59 +230,91 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               },
               '&:hover': {
                 backgroundColor: `${theme.palette.primary.light}22`,
-                transform: 'translateX(5px)',
-                transition: 'transform 0.3s ease-in-out'
+                transform: sidebarCollapsed ? 'scale(1.1)' : 'translateX(5px)',
+                transition: 'all 0.3s ease-in-out'
               },
               transition: 'all 0.3s ease'
             }}
           >
-            <ListItemIcon sx={{ 
-              color: isActive(item.path) ? 'white' : theme.palette.primary.main,
-              minWidth: 40
-            }}>
-              {item.icon}
-            </ListItemIcon>
-            <ListItemText 
-              primary={item.text} 
-              primaryTypographyProps={{ 
-                fontWeight: isActive(item.path) ? 600 : 400
-              }}
-            />
+            <Tooltip title={sidebarCollapsed ? item.text : ""} placement="right">
+              <ListItemIcon sx={{ 
+                color: isActive(item.path) ? 'white' : theme.palette.primary.main,
+                minWidth: sidebarCollapsed ? 0 : 40,
+                mr: sidebarCollapsed ? 0 : 2,
+                justifyContent: 'center'
+              }}>
+                {item.icon}
+              </ListItemIcon>
+            </Tooltip>
+            {!sidebarCollapsed && (
+              <ListItemText 
+                primary={item.text} 
+                primaryTypographyProps={{ 
+                  fontWeight: isActive(item.path) ? 600 : 400
+                }}
+              />
+            )}
           </ListItem>
         ))}
       </List>
       
       <Divider />
       
-      <Box sx={{ p: 2 }}>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontWeight: 500 }}>
-          Tools & Account
-        </Typography>
-        <Button 
-          variant="outlined" 
-          fullWidth 
-          startIcon={<HelpIcon />}
-          sx={{ 
-            mb: 1,
-            justifyContent: 'flex-start',
-            borderRadius: 2,
-          }}
-        >
-          Help & Support
-        </Button>
-        <Button 
-          variant="outlined" 
-          color="error"
-          fullWidth 
-          startIcon={<LogoutIcon />}
-          onClick={handleLogout}
-          sx={{ 
-            justifyContent: 'flex-start',
-            borderRadius: 2,
-          }}
-        >
-          Logout
-        </Button>
+      <Box sx={{ p: sidebarCollapsed ? 1 : 2, display: 'flex', flexDirection: 'column', alignItems: sidebarCollapsed ? 'center' : 'flex-start' }}>
+        {!sidebarCollapsed && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontWeight: 500 }}>
+            Tools & Account
+          </Typography>
+        )}
+        
+        {sidebarCollapsed ? (
+          <Tooltip title="Help & Support" placement="right">
+            <IconButton 
+              color="primary"
+              sx={{ mb: 1 }}
+            >
+              <HelpIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        ) : (
+          <Button 
+            variant="outlined" 
+            fullWidth 
+            startIcon={<HelpIcon />}
+            sx={{ 
+              mb: 1,
+              justifyContent: 'flex-start',
+              borderRadius: 2,
+            }}
+          >
+            Help & Support
+          </Button>
+        )}
+        
+        {sidebarCollapsed ? (
+          <Tooltip title="Logout" placement="right">
+            <IconButton 
+              color="error"
+              onClick={handleLogout}
+            >
+              <LogoutIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        ) : (
+          <Button 
+            variant="outlined" 
+            color="error"
+            fullWidth 
+            startIcon={<LogoutIcon />}
+            onClick={handleLogout}
+            sx={{ 
+              justifyContent: 'flex-start',
+              borderRadius: 2,
+            }}
+          >
+            Logout
+          </Button>
+        )}
       </Box>
     </Box>
   );
@@ -273,7 +351,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
           >
             <Box
               sx={{ 
-                background: 'rgba(255, 255, 255, 0.9)',
+                background: '#FFFFFF', // Solid white background for better contrast
                 width: 40, 
                 height: 40,
                 borderRadius: '8px',
@@ -459,26 +537,90 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
       </AppBar>
 
       <Box sx={{ display: 'flex', flexGrow: 1 }}>
-        {/* Permanent drawer for desktop */}
+        {/* Permanent drawer for desktop - with dynamic width */}
         {!isMobile && (
-          <Drawer
-            variant="permanent"
-            sx={{
-              width: 280,
-              flexShrink: 0,
-              [`& .MuiDrawer-paper`]: { 
-                width: 280, 
-                boxSizing: 'border-box',
-                borderRight: `1px solid ${theme.palette.divider}`,
-                boxShadow: 'none',
-                background: `linear-gradient(180deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, ${alpha(theme.palette.background.default, 1)} 100%)`,
-              },
-              display: { xs: 'none', md: 'block' }
-            }}
-          >
-            <Toolbar /> {/* For spacing under the AppBar */}
-            {drawer}
-          </Drawer>
+          <>
+            <Drawer
+              variant="permanent"
+              sx={{
+                width: sidebarWidth,
+                flexShrink: 0,
+                [`& .MuiDrawer-paper`]: { 
+                  width: sidebarWidth, 
+                  boxSizing: 'border-box',
+                  borderRight: `1px solid ${theme.palette.divider}`,
+                  boxShadow: 'none',
+                  background: `linear-gradient(180deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, ${alpha(theme.palette.background.default, 1)} 100%)`,
+                  overflowX: 'hidden',
+                  transition: 'width 0.3s ease'
+                },
+                display: { xs: 'none', md: 'block' }
+              }}
+            >
+              <Toolbar /> {/* For spacing under the AppBar */}
+              {drawer}
+            </Drawer>
+
+            {/* Add the vertical toggle bar */}
+            <Box
+              onClick={toggleSidebar}
+              sx={{
+                position: 'fixed',
+                left: sidebarWidth - 3,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                height: '160px',
+                width: '18px',
+                backgroundColor: alpha(theme.palette.primary.main, 0.65),
+                borderRadius: '8px',
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}`,
+                zIndex: theme.zIndex.drawer + 2,
+                cursor: 'pointer',
+                display: { xs: 'none', md: 'flex' },
+                flexDirection: 'column',
+                justifyContent: 'center',
+                alignItems: 'center',
+                '&:hover': {
+                  backgroundColor: alpha(theme.palette.primary.dark, 0.75),
+                  boxShadow: `0 0 15px ${alpha(theme.palette.primary.main, 0.4)}`,
+                  transform: 'translateY(-50%) scale(1.05)',
+                },
+                transition: 'all 0.3s ease, left 0.3s ease, transform 0.2s ease',
+                backdropFilter: 'blur(2px)',
+              }}
+            >
+              {/* Add a subtle drag bar pattern */}
+              {[0, 1, 2].map((i) => (
+                <Box
+                  key={i}
+                  sx={{
+                    height: '4px',
+                    width: '6px',
+                    backgroundColor: 'white',
+                    borderRadius: '2px',
+                    margin: '3px 0',
+                  }}
+                />
+              ))}
+              <Box
+                sx={{
+                  height: '24px',
+                  width: '100%',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  color: 'white',
+                  marginTop: '8px',
+                }}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRightIcon sx={{ fontSize: '22px', opacity: 1 }} />
+                ) : (
+                  <ChevronLeftIcon sx={{ fontSize: '22px', opacity: 1 }} />
+                )}
+              </Box>
+            </Box>
+          </>
         )}
         
         {/* Temporary drawer for mobile */}
@@ -491,19 +633,23 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
           }}
           sx={{
             display: { xs: 'block', md: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: 280 },
+            '& .MuiDrawer-paper': { 
+              boxSizing: 'border-box', 
+              width: expandedWidth,
+              overflowX: 'hidden'
+            },
           }}
         >
           {drawer}
         </Drawer>
         
-        {/* Main content */}
+        {/* Main content - adjust width based on sidebar state */}
         <Box 
           component="main" 
           sx={{ 
             flexGrow: 1, 
             p: 3,
-            width: { md: `calc(100% - 280px)` },
+            width: { md: `calc(100% - ${sidebarWidth}px)` },
             marginTop: "64px", // Height of AppBar
             backgroundColor: 'transparent',
             position: 'relative',
@@ -511,6 +657,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             backgroundPosition: 'center top',
             backgroundRepeat: 'repeat',
             backgroundSize: '80px 80px',
+            transition: 'width 0.3s ease',
             '&::after': {
               content: '""',
               position: 'absolute',
@@ -591,7 +738,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 NoteNest
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Your cozy note-taking home
+                Think it. Note it. Own it.
               </Typography>
             </Box>
             
