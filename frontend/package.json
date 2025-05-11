@@ -7,6 +7,7 @@
     "start": "vite",
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:netlify": "tsc --project tsconfig.production.json && vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "clean": "rimraf dist",
