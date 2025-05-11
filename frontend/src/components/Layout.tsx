@@ -22,7 +22,9 @@ import {
   Fade,
   Menu,
   MenuItem,
-  Chip
+  Chip,
+  InputBase,
+  alpha
 } from '@mui/material';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -36,20 +38,28 @@ import {
   Help as HelpIcon,
   Logout as LogoutIcon,
   Person as PersonIcon,
-  Home as HomeIcon
+  Home as HomeIcon,
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
+  Notifications as NotificationsIcon
 } from '@mui/icons-material';
-import { alpha } from '@mui/material/styles';
 
 interface LayoutProps {
   children: React.ReactNode;
+  toggleThemeMode: () => void;
+  themeMode: 'light' | 'dark';
 }
 
-const Layout: React.FC<LayoutProps> = ({ children }) => {
+const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode }) => {
   const theme = useTheme();
   const navigate = useNavigate();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const location = useLocation();
+  
+  // Add user menu state
+  const [userMenuAnchor, setUserMenuAnchor] = React.useState<null | HTMLElement>(null);
+  const userMenuOpen = Boolean(userMenuAnchor);
 
   // Add user info state from localStorage
   const [userName, setUserName] = React.useState<string>('User');
@@ -67,20 +77,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     if (storedRole) setUserRole(storedRole);
   }, []);
 
-  // Add user-related states
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const open = Boolean(anchorEl);
-
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
+  const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
+    setUserMenuAnchor(event.currentTarget);
   };
 
-  const handleMenuClose = () => {
-    setAnchorEl(null);
+  const handleUserMenuClose = () => {
+    setUserMenuAnchor(null);
   };
 
   const handleLogout = () => {
@@ -154,48 +160,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       
       <Divider />
       
-      {/* User Profile Section */}
-      <Box sx={{ 
-        p: 2, 
-        display: 'flex', 
-        alignItems: 'center',
-        backgroundColor: theme.palette.background.default
-      }}>
-        <Avatar sx={{ 
-          bgcolor: userRole === 'tester' ? theme.palette.success.main : theme.palette.secondary.main,
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-        }}>
-          <PersonIcon />
-        </Avatar>
-        <Box sx={{ ml: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body1" sx={{ fontWeight: 600 }}>
-              {userName}
-            </Typography>
-            {userRole === 'tester' && (
-              <Chip
-                label="Test User"
-                size="small"
-                color="success"
-                sx={{ 
-                  height: 20, 
-                  fontSize: '0.6rem',
-                  fontWeight: 'bold',
-                  '& .MuiChip-label': { 
-                    padding: '0 4px'
-                  }
-                }}
-              />
-            )}
-          </Box>
-          <Typography variant="body2" color="text.secondary">
-            {userEmail}
-          </Typography>
-        </Box>
-      </Box>
-      
-      <Divider />
-      
       <List sx={{ py: 2, flexGrow: 1 }}>
         {navItems.map((item) => (
           <ListItem 
@@ -248,18 +212,6 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontWeight: 500 }}>
           Tools & Account
         </Typography>
-        <Button 
-          variant="outlined" 
-          fullWidth 
-          startIcon={<SettingsIcon />}
-          sx={{ 
-            mb: 1, 
-            justifyContent: 'flex-start',
-            borderRadius: 2,
-          }}
-        >
-          Settings
-        </Button>
         <Button 
           variant="outlined" 
           fullWidth 
@@ -360,149 +312,149 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Typography>
           </Box>
           
+          {/* Spacer */}
           <Box sx={{ flexGrow: 1 }} />
           
-          {/* Desktop Navigation Menu */}
-          {!isMobile && (
-            <Stack direction="row" spacing={1}>
-              {navItems.map((item) => (
-                <Button
-                  key={item.text}
-                  component={RouterLink}
-                  to={item.path}
-                  startIcon={item.icon}
-                  variant={isActive(item.path) ? "contained" : "text"}
-                  color={isActive(item.path) ? "primary" : "inherit"}
-                  size="large"
-                  sx={{
-                    fontWeight: isActive(item.path) ? 600 : 500,
-                    px: 2,
-                    borderRadius: 2,
-                    ...(isActive(item.path) && {
-                      background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
-                    })
-                  }}
-                >
-                  {item.text}
-                </Button>
-              ))}
-            </Stack>
-          )}
-          
-          {/* User Menu */}
-          <Box sx={{ ml: 2, display: 'flex', alignItems: 'center' }}>
-            <Tooltip title="Account settings">
+          {/* Right side toolbar items */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            {/* Search button - navigates to search page */}
+            <Tooltip title="Search">
+              <IconButton 
+                color="inherit" 
+                onClick={() => navigate('/search')}
+                sx={{ borderRadius: 2 }}
+              >
+                <SearchIcon />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Notifications */}
+            <Tooltip title="Notifications">
+              <IconButton 
+                color="inherit"
+                sx={{ borderRadius: 2 }}
+              >
+                <NotificationsIcon />
+              </IconButton>
+            </Tooltip>
+            
+            {/* Dark/Light mode toggle */}
+            <Tooltip title={`Switch to ${themeMode === 'dark' ? 'light' : 'dark'} mode`}>
               <IconButton
-                onClick={handleMenuClick}
-                size="small"
-                aria-controls={open ? 'account-menu' : undefined}
-                aria-haspopup="true"
-                aria-expanded={open ? 'true' : undefined}
+                onClick={toggleThemeMode}
+                color="inherit"
                 sx={{ 
-                  ml: 2,
-                  p: 0.5, 
-                  border: `2px solid ${alpha(theme.palette.primary.main, 0.1)}`,
+                  ml: 1, 
+                  borderRadius: 2,
+                  transition: 'all 0.3s ease',
                   '&:hover': {
                     backgroundColor: alpha(theme.palette.primary.main, 0.1),
+                    transform: 'rotate(30deg)'
                   }
                 }}
               >
-                <Avatar 
-                  alt="User" 
-                  sx={{ 
-                    width: 32, 
-                    height: 32, 
-                    bgcolor: theme.palette.secondary.main 
-                  }}
-                >
-                  <PersonIcon fontSize="small" />
-                </Avatar>
+                {themeMode === 'dark' ? <LightModeIcon /> : <DarkModeIcon />}
               </IconButton>
             </Tooltip>
-          </Box>
-          
-          {/* Account Menu */}
-          <Menu
-            anchorEl={anchorEl}
-            id="account-menu"
-            open={open}
-            onClose={handleMenuClose}
-            onClick={handleMenuClose}
-            PaperProps={{
-              elevation: 2,
-              sx: {
-                overflow: 'visible',
-                filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.1))',
-                mt: 1.5,
-                borderRadius: 2,
-                minWidth: 200,
-                '&:before': {
-                  content: '""',
-                  display: 'block',
-                  position: 'absolute',
-                  top: 0,
-                  right: 14,
-                  width: 10,
-                  height: 10,
-                  bgcolor: 'background.paper',
-                  transform: 'translateY(-50%) rotate(45deg)',
-                  zIndex: 0,
+            
+            {/* User profile menu */}
+            <Box sx={{ ml: 1 }}>
+              <Tooltip title="Account settings">
+                <IconButton
+                  onClick={handleUserMenuOpen}
+                  size="small"
+                  edge="end"
+                  aria-label="account of current user"
+                  aria-controls={userMenuOpen ? 'account-menu' : undefined}
+                  aria-haspopup="true"
+                  aria-expanded={userMenuOpen ? 'true' : undefined}
+                  sx={{ 
+                    ml: 1,
+                    p: 0.5,
+                    border: `2px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                    borderRadius: '50%'
+                  }}
+                >
+                  <Avatar 
+                    sx={{ 
+                      width: 32, 
+                      height: 32,
+                      bgcolor: theme.palette.primary.main
+                    }}
+                  >
+                    {userName.charAt(0).toUpperCase()}
+                  </Avatar>
+                </IconButton>
+              </Tooltip>
+            </Box>
+            
+            {/* User Menu */}
+            <Menu
+              anchorEl={userMenuAnchor}
+              id="account-menu"
+              open={userMenuOpen}
+              onClose={handleUserMenuClose}
+              onClick={handleUserMenuClose}
+              transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+              anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+              PaperProps={{
+                elevation: 3,
+                sx: {
+                  overflow: 'visible',
+                  filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.15))',
+                  mt: 1.5,
+                  borderRadius: 2,
+                  width: 220,
+                  '&:before': {
+                    content: '""',
+                    display: 'block',
+                    position: 'absolute',
+                    top: 0,
+                    right: 14,
+                    width: 10,
+                    height: 10,
+                    bgcolor: 'background.paper',
+                    transform: 'translateY(-50%) rotate(45deg)',
+                    zIndex: 0,
+                  },
                 },
-              },
-            }}
-            transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-            anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          >
-            <MenuItem sx={{ py: 1.5 }}>
-              <Avatar sx={{ mr: 2, bgcolor: userRole === 'tester' ? theme.palette.success.main : theme.palette.secondary.main }} />
-              <Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5 }}>{userName}</Typography>
-                  {userRole === 'tester' && (
-                    <Chip
-                      label="Test User"
-                      size="small"
-                      color="success"
-                      sx={{ 
-                        height: 20, 
-                        fontSize: '0.6rem',
-                        fontWeight: 'bold',
-                        '& .MuiChip-label': { 
-                          padding: '0 4px'
-                        }
-                      }}
-                    />
-                  )}
-                </Box>
-                <Typography variant="body2" color="text.secondary">{userEmail}</Typography>
+              }}
+            >
+              <Box sx={{ px: 2, pt: 2, pb: 1 }}>
+                <Typography variant="subtitle2" noWrap>
+                  {userName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary" noWrap>
+                  {userEmail}
+                </Typography>
               </Box>
-            </MenuItem>
-            
-            <Divider />
-            
-            <MenuItem sx={{ py: 1 }}>
-              <ListItemIcon>
-                <PersonIcon fontSize="small" color="primary" />
-              </ListItemIcon>
-              <Typography>My Profile</Typography>
-            </MenuItem>
-            
-            <MenuItem sx={{ py: 1 }}>
-              <ListItemIcon>
-                <SettingsIcon fontSize="small" color="primary" />
-              </ListItemIcon>
-              <Typography>Settings</Typography>
-            </MenuItem>
-            
-            <Divider />
-            
-            <MenuItem onClick={handleLogout} sx={{ py: 1 }}>
-              <ListItemIcon>
-                <LogoutIcon fontSize="small" color="error" />
-              </ListItemIcon>
-              <Typography color="error">Logout</Typography>
-            </MenuItem>
-          </Menu>
+              
+              <Divider />
+              
+              <MenuItem component={RouterLink} to="/profile">
+                <ListItemIcon>
+                  <PersonIcon fontSize="small" />
+                </ListItemIcon>
+                My Profile
+              </MenuItem>
+              
+              <MenuItem component={RouterLink} to="/settings">
+                <ListItemIcon>
+                  <SettingsIcon fontSize="small" />
+                </ListItemIcon>
+                Settings
+              </MenuItem>
+              
+              <Divider />
+              
+              <MenuItem onClick={handleLogout}>
+                <ListItemIcon>
+                  <LogoutIcon fontSize="small" />
+                </ListItemIcon>
+                Logout
+              </MenuItem>
+            </Menu>
+          </Stack>
         </Toolbar>
       </AppBar>
 
