@@ -341,9 +341,9 @@ const NoteEditor: React.FC = () => {
     showSnackbarMessage('Flashcards saved successfully!', 'success', false);
     setChatbotOpen(false);
     
-    // Direct navigation after a short delay to show the message
+    // Use React Router's navigate instead of window.location
     setTimeout(() => {
-      window.location.href = '/';
+      navigate('/');
     }, 1500);
   };
 
@@ -454,9 +454,9 @@ const NoteEditor: React.FC = () => {
         showSnackbarMessage('Note saved successfully!', 'success', false);
       }
       
-      // Direct navigation after a short delay to show the message
+      // Use React Router's navigate instead of window.location
       setTimeout(() => {
-        window.location.href = '/';
+        navigate('/');
       }, 1500);
     } catch (error) {
       console.error('Error saving note:', error);
@@ -470,7 +470,7 @@ const NoteEditor: React.FC = () => {
     if (noteId) {
       // If editing an existing note, navigate back
       showSnackbarMessage('Edit cancelled', 'info');
-      window.location.href = '/';
+      navigate('/');
     } else {
       // If creating a new note, clear the form
       setTitle('');
@@ -479,15 +479,15 @@ const NoteEditor: React.FC = () => {
       
       // Show message and then navigate
       showSnackbarMessage('Note discarded', 'info');
-      // Direct navigation after a short delay
+      // Use React Router's navigate instead of window.location
       setTimeout(() => {
-        window.location.href = '/';
+        navigate('/');
       }, 1500);
     }
   };
 
   const navigateBack = () => {
-    window.location.href = '/';
+    navigate('/');
   };
 
   const handleContentChange = (html: string) => {
@@ -907,14 +907,14 @@ const NoteEditor: React.FC = () => {
         sx={{
           '& .MuiPaper-root': {
             minWidth: '300px',
-            boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+            boxShadow: 'none'
           }
         }}
       >
         <Alert 
           onClose={() => setShowSnackbar(false)} 
           severity={snackbarSeverity}
-          variant="filled"
+          variant="standard"
           sx={{ width: '100%', fontSize: '0.95rem' }}
         >
           {snackbarMessage}

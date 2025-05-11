@@ -10,9 +10,74 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <title>Smart Note Organizer</title>
+    <!-- Improved fallback styles to prevent white screen issues -->
+    <style>
+      body {
+        background-color: #f5f8ff; /* Light mode background */
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      }
+      
+      @media (prefers-color-scheme: dark) {
+        body {
+          background-color: #0f172a; /* Dark mode background */
+          color: #f0f9ff;
+        }
+      }
+      
+      /* Basic styling for root to prevent layout shifts */
+      #root {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+      
+      /* Loading indicator that shows before React loads */
+      .app-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        width: 100%;
+        position: fixed;
+        top: 0;
+        left: 0;
+        background-color: inherit;
+        z-index: 9999;
+      }
+      
+      .loading-spinner {
+        width: 50px;
+        height: 50px;
+        border: 5px solid rgba(61, 123, 229, 0.2);
+        border-radius: 50%;
+        border-top-color: #3d7be5;
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      
+      .loading-text {
+        margin-top: 20px;
+        color: #3d7be5;
+        font-size: 16px;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Fallback loading indicator while React is initializing -->
+      <div class="app-loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading Smart Note Organizer...</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html> 

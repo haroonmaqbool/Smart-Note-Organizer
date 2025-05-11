@@ -257,7 +257,14 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
     localStorage.removeItem('userEmail');
     localStorage.removeItem('userRole');
     
+    // Use React Router's navigate instead of direct window changes
     navigate('/login');
+  };
+
+  // Function to navigate to dashboard when logo is clicked
+  const handleLogoClick = () => {
+    // Use React Router's navigate instead of direct window changes
+    navigate('/');
   };
 
   // Load user info from localStorage on component mount
@@ -284,11 +291,6 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
-  };
-
-  // Function to navigate to dashboard when logo is clicked
-  const handleLogoClick = () => {
-    navigate('/');
   };
 
   const navItems = [
@@ -527,11 +529,11 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             mt: 8, // To position below the app bar
             '& .MuiAlert-root': {
               minWidth: '250px',
-              boxShadow: theme.shadows[3],
+              boxShadow: 'none', // Remove shadow that might cause performance issues
               border: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
               borderRadius: 2,
-              backgroundColor: alpha(theme.palette.background.paper, 0.9),
-              backdropFilter: 'blur(8px)',
+              backgroundColor: theme.palette.background.paper, // Use solid color instead of alpha
+              // Remove backdropFilter which can cause rendering issues
               '&.MuiAlert-standardSuccess': {
                 borderLeft: `4px solid ${theme.palette.success.main}`
               },
@@ -546,7 +548,6 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               },
             }
           }}
-          TransitionComponent={Fade}
         >
           <Alert
             onClose={handleNotificationClose}
@@ -564,8 +565,8 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               '& .MuiAlert-icon': {
                 padding: theme.spacing(1),
                 borderRadius: '50%',
-                backgroundColor: alpha(theme.palette[notification.type].main, 0.1),
-                color: theme.palette[notification.type].main,
+                backgroundColor: theme.palette.background.paper, // Use solid color
+                color: theme.palette.primary.main,
               },
               '& .MuiAlert-message': {
                 fontWeight: 500,
@@ -680,12 +681,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                     color="error"
                     sx={{
                       '& .MuiBadge-badge': {
-                        animation: unreadCount > 0 ? 'pulse 1.5s infinite' : 'none',
-                        '@keyframes pulse': {
-                          '0%': { transform: 'scale(1)' },
-                          '50%': { transform: 'scale(1.2)' },
-                          '100%': { transform: 'scale(1)' },
-                        },
+                        // Remove the animation that might cause performance issues
                       }
                     }}
                   >

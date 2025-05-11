@@ -338,9 +338,12 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   
   useEffect(() => {
     let connected = false;
+    let isMounted = true; // Flag to track if component is mounted
     
     // Check backend connectivity on startup
     const checkBackendStatus = async () => {
+      if (!isMounted) return; // Don't proceed if unmounted
+      
       try {
         // First try to connect
         connected = await api.checkConnection();
@@ -415,9 +418,14 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     
     checkBackendStatus();
     
-    // Recheck every 15 seconds in case backend restarts
-    const interval = setInterval(checkBackendStatus, 15000);
-    return () => clearInterval(interval);
+    // Recheck every 30 seconds instead of 15 to reduce frequency
+    const interval = setInterval(checkBackendStatus, 30000);
+    
+    // Cleanup function
+    return () => {
+      isMounted = false; // Set flag to false when unmounting
+      clearInterval(interval);
+    };
   }, [fetchNotesAndFlashcards, retryCount, dispatch]);
 
   return (
@@ -427,12 +435,18 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       {/* Snackbar notification instead of fixed banner */}
       <Snackbar 
         open={showNotification && !backendReady} 
-        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         autoHideDuration={null} // Don't auto-hide
+        sx={{
+          boxShadow: 'none',
+          '& .MuiPaper-root': {
+            backgroundColor: 'error.main', // Use direct color instead of alpha
+          }
+        }}
       >
         <Alert 
           severity="error" 
-          variant="filled"
+          variant="standard" // Changed from filled to standard for better performance
           onClose={handleCloseNotification}
           action={
             <Button 
@@ -443,7 +457,7 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               Retry
             </Button>
           }
-          sx={{ width: '100%' }}
+          sx={{ width: '100%', boxShadow: 'none' }} // Remove shadow
         >
           Cannot connect to backend services. Some features might not work properly.
         </Alert>
