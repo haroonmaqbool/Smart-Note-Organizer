@@ -1,0 +1,15 @@
+[build]
+  base = "frontend"
+  publish = "dist"
+  command = "npm run build:netlify"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[build.environment]
+  NODE_VERSION = "18"
+  VITE_API_BASE_URL = "https://your-backend-url.com/api"
+  VITE_OPENROUTER_API_KEY = "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"
+  VITE_AI_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
