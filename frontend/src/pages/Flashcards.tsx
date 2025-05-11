@@ -1089,7 +1089,7 @@ const Flashcards: React.FC = () => {
         }}>
           <Box sx={{ 
             width: '100%', 
-            maxWidth: '1200px', 
+            maxWidth: '700px', 
             display: 'flex', 
             flexDirection: 'column', 
             alignItems: 'center',
@@ -1098,63 +1098,74 @@ const Flashcards: React.FC = () => {
             <Typography variant="h5" sx={{ color: 'white', mb: 3, fontWeight: 'bold' }}>
               Studying: {getActiveNoteTitle() || 'Flashcards'}
             </Typography>
-            
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-              {filteredFlashcards.map((card) => (
-                <Grid item xs={12} sm={6} md={4} key={card.id}>
-                  <Card 
-                    sx={{
-                      height: '100%',
-                      minHeight: 200,
-                      boxShadow: 3,
-                      borderRadius: 2,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      p: 0,
-                      transition: 'transform 0.2s',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                      },
-                    }}
-                  >
-                    <CardContent
-                      sx={{
-                        height: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        p: 3,
-                      }}
-                    >
-                      <Box sx={{ mb: 2 }}>
-                        <Typography variant="h6" component="div" gutterBottom>
-                          {card.front}
-                        </Typography>
-                      </Box>
-                      
-                      <Divider sx={{ my: 2 }} />
-                      
-                      <Box sx={{ 
-                        display: 'flex', 
-                        flexGrow: 1,
-                        py: 2,
-                        bgcolor: alpha(theme.palette.secondary.light, 0.05),
-                        borderRadius: 2,
-                        p: 2,
-                      }}>
-                        <Typography 
-                          variant="body1" 
-                          component="div" 
-                          color="text.secondary"
-                        >
-                          {card.back}
-                        </Typography>
-                      </Box>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-            
+
+            {/* Single flashcard study UI */}
+            <Box sx={{
+              width: '100%',
+              maxWidth: 600,
+              minHeight: 300,
+              bgcolor: 'rgba(30,40,60,0.95)',
+              borderRadius: 4,
+              boxShadow: 6,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative',
+              mb: 3,
+              cursor: 'pointer',
+              transition: 'box-shadow 0.2s',
+              '&:hover': {
+                boxShadow: 12,
+              },
+            }}
+              onClick={() => setIsFlipped(f => !f)}
+            >
+              <Box sx={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                p: 4,
+                minHeight: 220,
+              }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  {isFlipped ? 'Answer' : 'Question'}
+                </Typography>
+                <Typography 
+                  variant="h6" 
+                  sx={{ 
+                    textAlign: 'center', 
+                    wordBreak: 'break-word', 
+                    fontWeight: 600, 
+                    fontSize: '1.3rem', 
+                    minHeight: 60,
+                    color: isFlipped ? '#F47C29' : 'inherit',
+                  }}
+                >
+                  {isFlipped ? filteredFlashcards[currentIndex].back : filteredFlashcards[currentIndex].front}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
+                  Click card to {isFlipped ? 'hide answer' : 'show answer'}
+                </Typography>
+              </Box>
+            </Box>
+
+            {/* Navigation and actions */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <IconButton onClick={handlePrevious} disabled={currentIndex === 0} size="large" color="primary">
+                <PrevIcon />
+              </IconButton>
+              <Typography variant="body1" color="white" sx={{ minWidth: 60, textAlign: 'center' }}>
+                {filteredFlashcards.length > 0 ? `${currentIndex + 1} / ${filteredFlashcards.length}` : ''}
+              </Typography>
+              <IconButton onClick={handleNext} disabled={currentIndex === filteredFlashcards.length - 1} size="large" color="primary">
+                <NextIcon />
+              </IconButton>
+            </Box>
+
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button 
                 variant="contained"
@@ -1164,13 +1175,12 @@ const Flashcards: React.FC = () => {
               >
                 Close
               </Button>
-              
               <Button 
                 variant="contained"
                 startIcon={<DownloadIcon />}
-                onClick={() => handleExportSelected(filteredFlashcards)}
+                onClick={() => handleExportSelected([filteredFlashcards[currentIndex]])}
               >
-                Export to Anki
+                Export Card
               </Button>
             </Box>
           </Box>

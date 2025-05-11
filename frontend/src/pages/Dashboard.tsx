@@ -36,11 +36,13 @@ import {
   Label as LabelIcon,
   Psychology as PsychologyIcon,
   Clear as ClearIcon,
-  DeleteOutlined as DeleteIcon
+  DeleteOutlined as DeleteIcon,
+  AutoAwesome as AutoAwesomeIcon,
+  Description as DescriptionIcon
 } from '@mui/icons-material';
 import { Link, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { api, Flashcard as ApiFlashcard } from '../services/api';
+import { api, Flashcard as ApiFlashcard, API_BASE_URL } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import type { LinkProps } from 'react-router-dom';
 import type { ButtonProps } from '@mui/material';
@@ -69,6 +71,8 @@ const Dashboard: React.FC = () => {
   
   // Add state for clear dashboard confirmation dialog
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  // Add state for generating summaries
+  const [generatingSummaries, setGeneratingSummaries] = useState(false);
 
   // Calculate some stats
   const totalNotes = notes.length;
@@ -85,6 +89,12 @@ const Dashboard: React.FC = () => {
     
   const recentlyUpdated = [...notes].sort((a, b) => 
     new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  ).slice(0, 3);
+
+  // Add stats for summaries
+  const totalSummaries = state.summaries.length;
+  const recentSummaries = [...state.summaries].sort((a, b) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   ).slice(0, 3);
 
   const StatCard = ({ icon, title, value, color }: { icon: React.ReactNode, title: string, value: string | number, color: string }) => (
@@ -223,6 +233,76 @@ const Dashboard: React.FC = () => {
     setClearDialogOpen(false);
   };
 
+  // Function to handle automatic summary generation for all notes
+  const handleGenerateAllSummaries = async () => {
+    // Debug information
+    console.log("API_BASE_URL:", API_BASE_URL);
+    console.log("Available notes:", notes.length);
+    console.log("Current summaries:", state.summaries.length);
+
+    if (notes.length === 0) {
+      setNotification({
+        open: true,
+        message: 'No notes available to summarize',
+        severity: 'warning'
+      });
+      return;
+    }
+
+    setGeneratingSummaries(true);
+    setNotification({
+      open: true,
+      message: 'Generating summaries for all notes...',
+      severity: 'info'
+    });
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const note of notes) {
+      try {
+        console.log(`Processing note: "${note.title}" (ID: ${note.id})`);
+        
+        // Extract text content from HTML
+        const textContent = note.content.replace(/<[^>]*>/g, ' ').trim();
+        
+        // Skip if content is too short
+        if (textContent.length < 20) {
+          console.log(`Skipping note "${note.title}" - content too short (${textContent.length} chars)`);
+          continue;
+        }
+
+        console.log(`Extracted ${textContent.length} chars of text from note "${note.title}"`);
+        
+        // Generate a summary using the API
+        const response = await api.createSummary(textContent, note.title);
+        
+        if (response.data) {
+          console.log(`Successfully generated summary for "${note.title}"`);
+          dispatch({ type: 'ADD_SUMMARY', payload: response.data });
+          successCount++;
+        } else if (response.error) {
+          console.error(`Error summarizing note "${note.title}":`, response.error);
+          errorCount++;
+        }
+      } catch (error) {
+        console.error(`Error processing note "${note.title}":`, error);
+        errorCount++;
+      }
+    }
+
+    setGeneratingSummaries(false);
+    
+    const message = `Generated ${successCount} summaries${errorCount > 0 ? ` (${errorCount} failed)` : ''}`;
+    console.log(message);
+    
+    setNotification({
+      open: true,
+      message: message,
+      severity: successCount > 0 ? 'success' : 'error'
+    });
+  };
+
   return (
     <Box className="fade-in" sx={{ px: { xs: 1, sm: 2 } }}>
       {/* Header Section */}
@@ -248,6 +328,20 @@ const Dashboard: React.FC = () => {
             }}
           >
             Clear Dashboard
+          </Button>
+          
+          <Button 
+            variant="outlined"
+            color="primary"
+            onClick={handleGenerateAllSummaries}
+            disabled={generatingSummaries || notes.length === 0}
+            startIcon={generatingSummaries ? <CircularProgress size={20} /> : <AutoAwesomeIcon />}
+            sx={{
+              px: 2,
+              py: 1.2,
+            }}
+          >
+            Generate Summaries
           </Button>
           
           <Button 

@@ -444,6 +444,25 @@ const NoteEditor: React.FC = () => {
         // Update in state context
         dispatch({ type: 'UPDATE_NOTE', payload: updatedNote });
         
+        // Update or create summary for this note
+        try {
+          // Extract text content from HTML
+          const textContent = content.replace(/<[^>]*>/g, ' ').trim();
+          
+          // Check if the note has enough content to generate a summary
+          if (textContent.length >= 20) {
+            // Generate a summary entry for the summaries list
+            const response = await api.createSummary(textContent, title);
+            
+            if (response.data) {
+              console.log(`Created/updated summary for "${title}"`);
+              dispatch({ type: 'ADD_SUMMARY', payload: response.data });
+            }
+          }
+        } catch (summaryError) {
+          console.error('Error creating summary:', summaryError);
+        }
+        
         // Show success message
         showSnackbarMessage('Note updated successfully!', 'success', false);
       } else {
@@ -461,8 +480,29 @@ const NoteEditor: React.FC = () => {
           setIsLoading(false);
           return;
         }
+        
         // Add backend note to state
         dispatch({ type: 'ADD_NOTE', payload: response.data });
+        
+        // Create a summary for this new note
+        try {
+          // Extract text content from HTML
+          const textContent = content.replace(/<[^>]*>/g, ' ').trim();
+          
+          // Check if the note has enough content to generate a summary
+          if (textContent.length >= 20) {
+            // Generate a summary entry for the summaries list
+            const summaryResponse = await api.createSummary(textContent, title);
+            
+            if (summaryResponse.data) {
+              console.log(`Created summary for new note "${title}"`);
+              dispatch({ type: 'ADD_SUMMARY', payload: summaryResponse.data });
+            }
+          }
+        } catch (summaryError) {
+          console.error('Error creating summary for new note:', summaryError);
+        }
+        
         // Show success message with the global notification system
         showNotification('created successfully', 'success', 'note', title);
         // Also show the local snackbar for other UI feedback

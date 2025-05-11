@@ -27,7 +27,9 @@ import {
   alpha,
   Snackbar,
   Alert,
-  Badge
+  Badge,
+  Switch,
+  FormControlLabel
 } from '@mui/material';
 import { Link as RouterLink, useLocation, useNavigate } from 'react-router-dom';
 import { 
@@ -46,9 +48,11 @@ import {
   DarkMode as DarkModeIcon,
   Notifications as NotificationsIcon,
   ChevronLeft as ChevronLeftIcon,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  Mouse as MouseIcon
 } from '@mui/icons-material';
 import HelpSupportPanel from './HelpSupportPanel';
+import MouseTrail from './MouseTrail';
 
 // Create notification context
 interface NotificationItem {
@@ -145,6 +149,22 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
   // Demo notification menu state (separate from main notification menu)
   const [demoMenuAnchor, setDemoMenuAnchor] = useState<null | HTMLElement>(null);
   const demoMenuOpen = Boolean(demoMenuAnchor);
+
+  // Add state for mouse trail effect
+  const [mouseTrailEnabled, setMouseTrailEnabled] = useState<boolean>(() => {
+    const savedState = localStorage.getItem('mouseTrailEnabled');
+    return savedState === null ? true : savedState === 'true';
+  });
+
+  // Save mouse trail state to localStorage when changed
+  useEffect(() => {
+    localStorage.setItem('mouseTrailEnabled', mouseTrailEnabled.toString());
+  }, [mouseTrailEnabled]);
+
+  // Toggle mouse trail effect
+  const toggleMouseTrail = () => {
+    setMouseTrailEnabled(prev => !prev);
+  };
 
   // Function to show notification
   const showNotification = (
@@ -328,11 +348,11 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
         display: 'flex', 
         flexDirection: 'column',
         p: 2,
-        background: '#0D1B2A', // Dark blue navy background
+        background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Changed to smooth gradient
         color: 'white',
         position: 'relative',
         overflow: 'hidden',
-        // Remove background pattern image
+        // Removed background pattern image
       }}>
       </Box>
       
@@ -353,18 +373,22 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               borderRadius: 2,
               justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               '&.Mui-selected': {
-                background: `linear-gradient(90deg, #C45A14, #F47C29)`, // Orange gradient for selected items
+                background: `linear-gradient(90deg, #C45A14, #F47C29)`, // Orange gradient for buttons
                 color: 'white',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
                 '&:hover': {
                   background: `linear-gradient(90deg, #C45A14, #F47C29)`,
                   opacity: 0.95,
+                  boxShadow: '0 0 8px #F47C29aa',
+                  transform: 'translateY(-1px)',
+                  transition: 'all 0.3s ease-in-out',
                 }
               },
               '&:hover': {
-                backgroundColor: 'rgba(244, 124, 41, 0.15)', // Orange hover effect
+                backgroundColor: 'rgba(244, 124, 41, 0.15)', // Orange hover
                 transform: sidebarCollapsed ? 'scale(1.1)' : 'translateX(5px)',
-                transition: 'all 0.3s ease-in-out'
+                transition: 'all 0.3s ease-in-out',
+                boxShadow: '0 0 8px #F47C29aa',
               },
               transition: 'all 0.3s ease'
             }}
@@ -462,6 +486,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
       markAllAsRead
     }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+        {/* Add MouseTrail component with enabled prop */}
+        <MouseTrail enabled={mouseTrailEnabled} />
+        
         {/* Help & Support Panel */}
         <HelpSupportPanel 
           open={helpPanelOpen} 
@@ -475,7 +502,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
           autoHideDuration={4000}
           onClose={handleNotificationClose}
           sx={{
-            mt: 7, // Reduced from 8 to remove extra space
+            mt: 6, // Reduced further to remove space between nav and header
             '& .MuiAlert-root': {
               minWidth: '250px',
               boxShadow: 'none', // Remove shadow that might cause performance issues
@@ -528,9 +555,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
         
         <AppBar position="fixed" color="primary" elevation={0} sx={{ 
           zIndex: theme.zIndex.drawer + 1,
-          backgroundColor: '#0D1B2A', // Dark blue navy background
+          backgroundColor: '#0D1B2A', // Dark Navy background
           color: 'white',
-          background: '#0D1B2A',
+          background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
           borderBottom: `1px solid rgba(196, 90, 20, 0.2)` // Orange accent
         }}>
@@ -590,7 +617,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 }}
               >
                 <span style={{
-                  color: '#F47C29' // Orange for NoteNest text
+                  color: '#F47C29' // Primary Orange for NoteNest
                 }}>
                   NoteNest
                 </span>
@@ -618,6 +645,23 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                   sx={{ borderRadius: 2 }}
                 >
                   <SearchIcon />
+                </IconButton>
+              </Tooltip>
+              
+              {/* Mouse trail toggle */}
+              <Tooltip title={`${mouseTrailEnabled ? 'Disable' : 'Enable'} mouse trail effect`}>
+                <IconButton
+                  onClick={toggleMouseTrail}
+                  color="inherit"
+                  sx={{ 
+                    borderRadius: 2,
+                    backgroundColor: mouseTrailEnabled ? alpha(theme.palette.primary.main, 0.2) : 'transparent',
+                    '&:hover': {
+                      backgroundColor: mouseTrailEnabled ? alpha(theme.palette.primary.main, 0.3) : alpha(theme.palette.primary.main, 0.1),
+                    }
+                  }}
+                >
+                  <MouseIcon />
                 </IconButton>
               </Tooltip>
               
@@ -980,7 +1024,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                     boxSizing: 'border-box',
                     borderRight: `1px solid #0D1B2A`,
                     boxShadow: 'none',
-                    background: '#0D1B2A', // Dark blue navy background
+                    background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
                     overflowX: 'hidden',
                     transition: 'width 0.3s ease'
                   },
@@ -1083,7 +1127,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               marginTop: "64px", // Height of AppBar
               backgroundColor: 'transparent',
               position: 'relative',
-              background: '#0D1B2A', // Dark blue navy background
+              background: `linear-gradient(135deg, #0D1B2A, #13293D)`, // Gradient background
               backgroundImage: 'none', // Remove pattern
               transition: 'width 0.3s ease',
               '&::after': {
@@ -1093,7 +1137,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 left: 0,
                 right: 0,
                 height: '240px',
-                background: `linear-gradient(135deg, rgba(196, 90, 20, 0.15), rgba(244, 124, 41, 0.1))`, // Orange accent gradient
+                background: `linear-gradient(135deg, rgba(196, 90, 20, 0.15), rgba(244, 124, 41, 0.1))`, // Orange accent
                 zIndex: -1,
                 borderRadius: '0 0 30px 30px',
               }
@@ -1138,43 +1182,49 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             py: 4,
             px: 2,
             mt: 'auto',
-            background: alpha(theme.palette.background.paper, 0.4),
-            borderTop: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`,
+            background: '#0D1B2A', // Flat background color
+            borderTop: `1px solid rgba(255, 255, 255, 0.05)`, // Updated border
             position: 'relative',
-            backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'44\' height=\'12\' viewBox=\'0 0 44 12\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M20 12v-2L0 0v10l4 2h16zm18 0l4-2V0L22 10v2h16zM20 0v8L4 0h16zm18 0L22 8V0h16z\' fill=\'%2360A5FA\' fill-opacity=\'0.08\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")',
-            backgroundSize: '44px 12px',
-            backgroundRepeat: 'repeat',
+            backgroundImage: 'none', // Remove pattern
           }}
         >
           <Container maxWidth="lg">
-            <Box sx={{ 
-              display: 'flex', 
-              flexDirection: { xs: 'column', sm: 'row' },
-              justifyContent: 'space-between',
-              alignItems: { xs: 'center', sm: 'flex-start' },
-              textAlign: { xs: 'center', sm: 'left' }
-            }}>
-              <Box sx={{ 
-                mb: { xs: 2, sm: 0 } }}>
-                <Typography variant="subtitle2" color="text.primary" gutterBottom sx={{ 
+            <Box 
+              sx={{ 
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center'
+              }}
+            >
+              <Typography 
+                variant="subtitle2" 
+                sx={{ 
                   fontWeight: 600, 
-                  background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  display: 'inline-block'
-                }}>
-                  NoteNest
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Think it. Note it. Own it.
-                </Typography>
-              </Box>
-              
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  © {new Date().getFullYear()} NoteNest. All rights reserved.
-                </Typography>
-              </Box>
+                  color: '#F47C29', // Orange color
+                  mb: 0.5
+                }}
+              >
+                NoteNest
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  color: 'white',
+                  mb: 1
+                }}
+              >
+                Think it. Note it. Own it.
+              </Typography>
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  color: 'rgba(255,255,255,0.5)'
+                }}
+              >
+                Made by Haroon, Azmeer, Khadija, Uswa.
+              </Typography>
             </Box>
           </Container>
         </Box>

@@ -152,6 +152,18 @@ export interface AppFlashcard {
   recentlySaved?: boolean;
 }
 
+// Add this interface after the AppFlashcard interface
+export interface Summary {
+  id: string;
+  title: string;
+  summary_text: string;
+  original_text: string;
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
+  model_used: string;
+}
+
 // Helper function to generate flashcards with OpenRouter API
 async function generateFlashcardsWithOpenRouter(content: string, title?: string, tags?: string[]): Promise<ChatbotResponse | null> {
   try {
@@ -246,16 +258,16 @@ export const api = {
     mockModeEnabled = true;
     console.log('Mock mode enabled');
   },
-
+  
   disableMockMode() {
     mockModeEnabled = false;
     console.log('Mock mode disabled');
   },
-
+  
   isMockModeEnabled() {
     return mockModeEnabled;
   },
-
+  
   async checkConnection(): Promise<boolean> {
     try {
       const response = await fetch(`${API_BASE_URL}/health/`);
@@ -402,7 +414,7 @@ export const api = {
         throw new Error(errorData.error || `Failed to update note: ${response.status}`);
       }
 
-      const data = await response.json();
+        const data = await response.json();
       return { 
         data: {
           id: data.id,
@@ -470,6 +482,7 @@ export const api = {
         front: card.question || card.front,
         back: card.answer || card.back,
         tags: card.tags || [],
+        noteId: card.noteId || card.note,
         createdAt: new Date(card.created_at || card.createdAt)
       }));
       
@@ -608,7 +621,7 @@ export const api = {
       return { error: handleApiError(error, 'Failed to delete flashcard from server') };
     }
   },
-  
+
   async summarize(text: string, aiModel?: AIModel): Promise<ApiResponse<{ summary: string, model_used: string }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/summarize`, {
@@ -667,7 +680,7 @@ export const api = {
 
         // Log the status of the OpenRouter response
         console.log('OpenRouter response status:', openRouterResponse.status);
-        
+
         if (openRouterResponse.ok) {
           const llmData = await openRouterResponse.json();
           console.log('OpenRouter API returned data:', llmData.choices ? 'Has choices' : 'No choices');
@@ -758,18 +771,18 @@ export const api = {
       // Fall back to backend API if OpenRouter fails
       try {
         console.log('Attempting backend API for tag generation...');
-        const response = await fetch(`${API_BASE_URL}/tag`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text, ai_model: aiModel }),
-        });
+      const response = await fetch(`${API_BASE_URL}/tag`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text, ai_model: aiModel }),
+      });
 
         console.log('Backend tag API response status:', response.status);
-        
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
           console.warn('Backend tag API error:', errorData.error || `Status ${response.status}`);
         } else {
           const data = await response.json();
@@ -1140,7 +1153,185 @@ export const api = {
     } catch (error) {
       return { error: handleApiError(error, 'Failed to save flashcards') };
     }
-  }
+  },
+
+  async getSummaries(): Promise<ApiResponse<Summary[]>> {
+    if (mockModeEnabled) {
+      return { data: [] };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/summaries/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const rawData = await response.json();
+      
+      // Transform the raw data to match our Summary interface
+      const data = rawData.map((summary: any) => ({
+        id: summary.id,
+        title: summary.title,
+        summary_text: summary.summary_text,
+        original_text: summary.original_text,
+        tags: summary.tags || [],
+        createdAt: new Date(summary.created_at || summary.createdAt),
+        updatedAt: new Date(summary.updated_at || summary.updatedAt),
+        model_used: summary.model_used
+      }));
+      
+      return { data };
+    } catch (error) {
+      return { error: handleApiError(error, 'Failed to fetch summaries') };
+    }
+  },
+
+  async getSummary(summaryId: string): Promise<ApiResponse<Summary>> {
+    if (mockModeEnabled) {
+      return { error: 'No summary found in mock mode' };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/summaries/${summaryId}/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const summary = await response.json();
+      
+      return { 
+        data: {
+          id: summary.id,
+          title: summary.title,
+          summary_text: summary.summary_text,
+          original_text: summary.original_text,
+          tags: summary.tags || [],
+          createdAt: new Date(summary.created_at || summary.createdAt),
+          updatedAt: new Date(summary.updated_at || summary.updatedAt),
+          model_used: summary.model_used
+        } 
+      };
+    } catch (error) {
+      return { error: handleApiError(error, 'Failed to fetch summary') };
+    }
+  },
+
+  async createSummary(text: string, title?: string, aiModel?: AIModel): Promise<ApiResponse<Summary>> {
+    if (mockModeEnabled) {
+      const mockSummary: Summary = {
+        id: `summary-${Date.now()}`,
+        title: title || 'Mock Summary',
+        summary_text: text.substring(0, 150) + '...',
+        original_text: text,
+        tags: ['mock', 'summary'],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        model_used: 'mock-model'
+      };
+      return { data: mockSummary };
+    }
+
+    try {
+      console.log(`Creating summary for text (${text.length} chars) with title: ${title || 'Untitled'}`);
+      
+      const response = await fetch(`${API_BASE_URL}/create-summary/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text,
+          title: title || 'Untitled Summary',
+          ai_model: aiModel
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Error response from create-summary endpoint:', errorData);
+        throw new Error(errorData.error || `Failed to create summary: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Summary created successfully:', data);
+      
+      return { 
+        data: {
+          id: data.id,
+          title: data.title,
+          summary_text: data.summary_text,
+          original_text: data.original_text,
+          tags: data.tags || [],
+          createdAt: new Date(data.created_at || data.createdAt),
+          updatedAt: new Date(data.updated_at || data.updatedAt),
+          model_used: data.model_used
+        } 
+      };
+    } catch (error) {
+      console.error('Error creating summary:', error);
+      return { error: handleApiError(error, 'Failed to create summary') };
+    }
+  },
+
+  async updateSummary(summary: Summary): Promise<ApiResponse<Summary>> {
+    if (mockModeEnabled) {
+      return { data: summary };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/summaries/${summary.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: summary.title,
+          summary_text: summary.summary_text,
+          original_text: summary.original_text,
+          tags: summary.tags,
+          model_used: summary.model_used
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update summary: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { 
+        data: {
+          id: data.id,
+          title: data.title,
+          summary_text: data.summary_text,
+          original_text: data.original_text,
+          tags: data.tags || [],
+          createdAt: new Date(data.created_at || data.createdAt),
+          updatedAt: new Date(data.updated_at || data.updatedAt),
+          model_used: data.model_used
+        } 
+      };
+    } catch (error) {
+      console.error('Error updating summary:', error);
+      return { error: handleApiError(error, 'Failed to update summary') };
+    }
+  },
+
+  async deleteSummary(summaryId: string): Promise<ApiResponse<boolean>> {
+    if (mockModeEnabled) {
+      return { data: true };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/summaries/${summaryId}/`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to delete summary: ${response.status}`);
+      }
+
+      return { data: true };
+    } catch (error) {
+      console.error('Error deleting summary:', error);
+      return { error: handleApiError(error, 'Failed to delete summary') };
+    }
+  },
 }; 
 
 // Fix the tag type errors

@@ -24,3 +24,16 @@ class Flashcard(models.Model):
 
     def __str__(self):
         return self.title
+
+class Summary(models.Model):
+    id = models.CharField(max_length=100, primary_key=True)
+    title = models.CharField(max_length=255)
+    original_text = models.TextField()
+    summary_text = models.TextField()
+    tags = models.JSONField(default=list)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    model_used = models.CharField(max_length=100, default="openrouter-default")
+
+    def __str__(self):
+        return self.title

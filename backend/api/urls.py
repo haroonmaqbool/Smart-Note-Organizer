@@ -5,12 +5,14 @@ from . import views
 router = DefaultRouter()
 router.register(r'notes', views.NoteViewSet)
 router.register(r'flashcards', views.FlashcardViewSet)
+router.register(r'summaries', views.SummaryViewSet, basename='summary')
 
 urlpatterns = [
     path('', include(router.urls)),
     path('health/', views.health_check, name='health_check'),
     path('ping/', views.ping, name='ping'),
     path('summarize/', views.summarize, name='summarize'),
+    path('create-summary/', views.create_summary, name='create_summary'),
     path('tag/', views.tag, name='tag'),
     path('search/', views.search, name='search'),
     path('upload/', views.upload_file, name='upload_file'),

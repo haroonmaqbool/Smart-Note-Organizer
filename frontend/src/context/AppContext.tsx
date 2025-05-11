@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useReducer, ReactNode, useEffect } from 'react';
-import { Note, AppFlashcard, api, ApiResponse } from '../services/api';
+import { Note, AppFlashcard, Summary, api, ApiResponse } from '../services/api';
 
 interface AppState {
   notes: Note[];
@@ -7,6 +7,8 @@ interface AppState {
   searchQuery: string;
   selectedTags: string[];
   flashcards: AppFlashcard[];
+  summaries: Summary[];
+  currentSummary: Summary | null;
 }
 
 type AppAction =
@@ -23,7 +25,13 @@ type AppAction =
   | { type: 'SET_NOTES'; payload: Note[] }
   | { type: 'SET_FLASHCARDS'; payload: AppFlashcard[] }
   | { type: 'CLEAR_NOTES' }
-  | { type: 'CLEAR_FLASHCARDS' };
+  | { type: 'CLEAR_FLASHCARDS' }
+  | { type: 'ADD_SUMMARY'; payload: Summary }
+  | { type: 'UPDATE_SUMMARY'; payload: Summary }
+  | { type: 'DELETE_SUMMARY'; payload: string }
+  | { type: 'SET_SUMMARIES'; payload: Summary[] }
+  | { type: 'SET_CURRENT_SUMMARY'; payload: Summary | null }
+  | { type: 'CLEAR_SUMMARIES' };
 
 // Create a default state to use when there's nothing in localStorage
 const defaultState: AppState = {
@@ -32,6 +40,8 @@ const defaultState: AppState = {
   searchQuery: '',
   selectedTags: [],
   flashcards: [],
+  summaries: [],
+  currentSummary: null,
 };
 
 // Mock data for first-time users
@@ -105,6 +115,8 @@ const loadInitialState = (): AppState => {
         searchQuery: parsedState.searchQuery || '',
         selectedTags: parsedState.selectedTags || [],
         flashcards: parsedState.flashcards || [],
+        summaries: parsedState.summaries || [],
+        currentSummary: parsedState.currentSummary || null,
       };
     }
   } catch (error) {
@@ -362,6 +374,44 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
           console.error('Error clearing flashcards in backend:', error);
         });
       break;
+    case 'ADD_SUMMARY':
+      newState = {
+        ...state,
+        summaries: [...state.summaries, action.payload],
+      };
+      break;
+    case 'UPDATE_SUMMARY':
+      newState = {
+        ...state,
+        summaries: state.summaries.map((summary) =>
+          summary.id === action.payload.id ? action.payload : summary
+        ),
+      };
+      break;
+    case 'DELETE_SUMMARY':
+      newState = {
+        ...state,
+        summaries: state.summaries.filter((summary) => summary.id !== action.payload),
+      };
+      break;
+    case 'SET_SUMMARIES':
+      newState = {
+        ...state,
+        summaries: action.payload,
+      };
+      break;
+    case 'SET_CURRENT_SUMMARY':
+      newState = {
+        ...state,
+        currentSummary: action.payload,
+      };
+      break;
+    case 'CLEAR_SUMMARIES':
+      newState = {
+        ...state,
+        summaries: [],
+      };
+      break;
     default:
       return state;
   }
@@ -413,6 +463,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             
             // Set flashcards in state
             dispatch({ type: 'SET_FLASHCARDS', payload: deduplicatedFlashcards });
+          }
+          
+          // Fetch summaries from backend
+          const summariesResponse = await api.getSummaries();
+          
+          if (summariesResponse.data) {
+            console.log('Loaded summaries from backend:', summariesResponse.data.length);
+            
+            // Set summaries in state
+            dispatch({ type: 'SET_SUMMARIES', payload: summariesResponse.data });
           }
           
           // Clear any localStorage data that might cause duplication

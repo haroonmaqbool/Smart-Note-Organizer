@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import NoteEditor from './pages/NoteEditor';
 import Search from './pages/Search';
 import Flashcards from './pages/Flashcards';
+import Summaries from './pages/Summaries';
 import { AppProvider, useApp } from './context/AppContext';
 import { api, API_BASE_URL } from './services/api';
 
@@ -337,13 +338,55 @@ const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       // Only try to fetch from backend if it's available
       const notesResponse = await api.getNotes();
       const flashcardsResponse = await api.getFlashcards();
+      const summariesResponse = await api.getSummaries();
       
       if (notesResponse.data && !notesResponse.error) {
         dispatch({ type: 'SET_NOTES', payload: notesResponse.data });
+        
+        // Auto-generate summaries for notes when loaded
+        const notes = notesResponse.data;
+        const existingSummaries = summariesResponse.data || [];
+        
+        // Process notes that don't have summaries yet
+        for (const note of notes) {
+          // Check if a summary already exists for this note
+          const hasSummary = existingSummaries.some(s => s.title === note.title);
+          
+          if (!hasSummary && note.content) {
+            console.log(`Auto-generating summary for note: "${note.title}"`);
+            
+            // Extract text content from HTML
+            const textContent = note.content.replace(/<[^>]*>/g, ' ').trim();
+            
+            // Skip if content is too short
+            if (textContent.length < 20) {
+              console.log(`Skipping note "${note.title}" - content too short (${textContent.length} chars)`);
+              continue;
+            }
+            
+            // Generate a summary using the API
+            try {
+              const response = await api.createSummary(textContent, note.title);
+              
+              if (response.data) {
+                console.log(`Successfully generated summary for "${note.title}"`);
+                dispatch({ type: 'ADD_SUMMARY', payload: response.data });
+              } else if (response.error) {
+                console.error(`Error generating summary for note "${note.title}":`, response.error);
+              }
+            } catch (summaryError) {
+              console.error(`Error processing summary for note "${note.title}":`, summaryError);
+            }
+          }
+        }
       }
       
       if (flashcardsResponse.data && !flashcardsResponse.error) {
         dispatch({ type: 'SET_FLASHCARDS', payload: flashcardsResponse.data });
+      }
+
+      if (summariesResponse.data && !summariesResponse.error) {
+        dispatch({ type: 'SET_SUMMARIES', payload: summariesResponse.data });
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -488,6 +531,7 @@ const App = () => {
                 <Route path="/editor" element={<NoteEditor />} />
                 <Route path="/search" element={<Search />} />
                 <Route path="/flashcards" element={<Flashcards />} />
+                <Route path="/summaries" element={<Summaries />} />
               </Routes>
             </Layout>
           </Router>
