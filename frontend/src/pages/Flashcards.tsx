@@ -1258,95 +1258,150 @@ const Flashcards: React.FC = () => {
         </Box>
         
         {filteredFlashcards.length > 0 ? (
-          <Grid container spacing={2}>
+          <Box 
+            sx={{ 
+              display: 'flex',
+              flexDirection: 'row',
+              gap: 2,
+              overflowX: 'auto',
+              pb: 2, // Add padding bottom for scrollbar
+              px: 1, // Add padding on sides
+              // Custom scrollbar styling
+              '&::-webkit-scrollbar': {
+                height: '8px',
+                backgroundColor: 'transparent',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: alpha(theme.palette.primary.main, 0.05),
+                borderRadius: '10px',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: alpha(theme.palette.primary.main, 0.2),
+                borderRadius: '10px',
+                '&:hover': {
+                  background: alpha(theme.palette.primary.main, 0.3),
+                },
+              },
+              // Firefox scrollbar
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${alpha(theme.palette.primary.main, 0.2)} ${alpha(theme.palette.primary.main, 0.05)}`,
+            }}
+          >
             {filteredFlashcards.map((card) => (
-              <Grid item xs={12} sm={6} md={4} key={card.id}>
-                <Card 
-                  sx={{ 
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      transform: 'translateY(-4px)',
-                      boxShadow: 3
-                    },
-                    ...(card.recentlySaved && {
-                      boxShadow: `0 0 0 2px ${theme.palette.secondary.main}`,
-                      position: 'relative',
-                      '&::after': {
-                        content: '""',
-                        position: 'absolute',
-                        top: 0,
-                        right: 0,
-                        width: '0',
-                        height: '0',
-                        borderStyle: 'solid',
-                        borderWidth: '0 16px 16px 0',
-                        borderColor: `transparent ${theme.palette.secondary.main} transparent transparent`,
-                      }
-                    })
-                  }}
-                >
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Typography 
-                      variant="h6" 
-                      gutterBottom
-                      sx={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {card.front}
-                    </Typography>
-                    
-                    <Divider sx={{ mt: 1, mb: 2 }} />
-                    
-                    <Typography 
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        display: '-webkit-box',
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: 'vertical',
-                      }}
-                    >
-                      {card.back}
-                    </Typography>
-                  </CardContent>
+              <Card 
+                key={card.id}
+                sx={{ 
+                  minWidth: { xs: '85%', sm: '350px', md: '380px' },
+                  maxWidth: { xs: '85%', sm: '350px', md: '380px' },
+                  display: 'flex',
+                  flexDirection: 'column',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    transform: 'translateY(-4px)',
+                    boxShadow: 3
+                  },
+                  ...(card.recentlySaved && {
+                    boxShadow: `0 0 0 2px ${theme.palette.secondary.main}`,
+                    position: 'relative',
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: '0',
+                      height: '0',
+                      borderStyle: 'solid',
+                      borderWidth: '0 16px 16px 0',
+                      borderColor: `transparent ${theme.palette.secondary.main} transparent transparent`,
+                    }
+                  })
+                }}
+              >
+                <CardContent sx={{ 
+                  flexGrow: 1, 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  p: 3 // Increase padding for better readability
+                }}>
+                  <Typography 
+                    variant="h6" 
+                    gutterBottom
+                    sx={{
+                      mb: 2, // Add more space below title
+                      wordBreak: 'break-word'
+                    }}
+                  >
+                    {card.front}
+                  </Typography>
                   
-                  <Box sx={{ p: 2, pt: 0 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Typography 
-                        variant="caption" 
-                        color="text.secondary"
-                        sx={{ 
-                          display: 'block',
-                          mt: 1 
-                        }}
-                      >
-                        {new Date(card.createdAt).toLocaleDateString()}
-                      </Typography>
-                      
-                      <IconButton
-                        size="small"
-                        color="error"
-                        onClick={() => handleDeleteFlashcard(card.id)}
-                        aria-label="Delete flashcard"
-                      >
-                        <DeleteIcon fontSize="small" />
-                      </IconButton>
+                  <Divider sx={{ mt: 1, mb: 2 }} />
+                  
+                  <Typography 
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      wordBreak: 'break-word',
+                      flexGrow: 1
+                    }}
+                  >
+                    {card.back}
+                  </Typography>
+                  
+                  {/* Tags section */}
+                  {card.tags && card.tags.length > 0 && (
+                    <Box sx={{ mt: 2, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {card.tags.slice(0, 3).map((tag, index) => (
+                        <Chip 
+                          key={index} 
+                          label={tag} 
+                          size="small" 
+                          color="primary" 
+                          variant="outlined"
+                          sx={{ borderRadius: '4px' }}
+                        />
+                      ))}
+                      {card.tags.length > 3 && (
+                        <Chip 
+                          label={`+${card.tags.length - 3}`} 
+                          size="small" 
+                          variant="outlined"
+                          sx={{ borderRadius: '4px' }}
+                        />
+                      )}
                     </Box>
+                  )}
+                </CardContent>
+                
+                <Box sx={{ 
+                  p: 2, 
+                  pt: 0, 
+                  borderTop: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+                  mt: 'auto' // Push to bottom
+                }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography 
+                      variant="caption" 
+                      color="text.secondary"
+                      sx={{ 
+                        display: 'block'
+                      }}
+                    >
+                      {new Date(card.createdAt).toLocaleDateString()}
+                    </Typography>
+                    
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleDeleteFlashcard(card.id)}
+                      aria-label="Delete flashcard"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
                   </Box>
-                </Card>
-              </Grid>
+                </Box>
+              </Card>
             ))}
-          </Grid>
+          </Box>
         ) : (
           <Box sx={{ textAlign: 'center', py: 4 }}>
             <Typography variant="h6" gutterBottom>
