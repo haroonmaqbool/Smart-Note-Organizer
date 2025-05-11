@@ -5,7 +5,7 @@
 def summarize_text(text, ai_model=None):
     return {
         "summary": text[:150] + ("..." if len(text) > 150 else ""),
-        "model_used": ai_model or "rule-based"
+        "model_used": ai_model or "openrouter-default"
     }
 
 # Simple tag extraction stub
@@ -90,8 +90,8 @@ def calculate_flashcard_score(card_dict, query):
     return score
 
 # AI model name stub
-AI_MODEL = "rule-based"
+AI_MODEL = "openrouter-default"
 
-# Llama API stub (returns None)
-def llama_api(prompt, **kwargs):
+# OpenRouter API is called directly from frontend
+def openrouter_api(prompt, **kwargs):
     return None 

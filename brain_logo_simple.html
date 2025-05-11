@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Brain Logo</title>
+    <style>
+        body { font-family: Arial; text-align: center; padding: 20px; }
+        canvas { border: 1px solid #ddd; }
+        button { padding: 10px 20px; margin-top: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Brain Network Logo</h1>
+    <canvas id="canvas" width="400" height="400"></canvas><br>
+    <button id="download">Save Logo</button>
+    
+    <script>
+        // Simple brain network logo renderer
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Clear canvas with white background
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, 400, 400);
+        
+        // Draw brain network from the image
+        function drawBrainNetwork() {
+            // Draw connections (gray lines)
+            ctx.strokeStyle = '#999';
+            ctx.lineWidth = 1;
+            
+            // Create a set of points representing the brain outline
+            const points = [
+                {x:100, y:150}, {x:120, y:110}, {x:150, y:90}, {x:180, y:80}, 
+                {x:210, y:70}, {x:240, y:80}, {x:270, y:90}, {x:290, y:110},
+                {x:310, y:140}, {x:315, y:170}, {x:305, y:200}, {x:290, y:220},
+                {x:270, y:240}, {x:250, y:260}, {x:230, y:275}, {x:210, y:290},
+                {x:190, y:305}, {x:170, y:315}, {x:150, y:310}, {x:130, y:295},
+                {x:110, y:275}, {x:95, y:250}, {x:85, y:220}, {x:80, y:190},
+                {x:80, y:170}
+            ];
+            
+            // Add some internal points
+            const innerPoints = [
+                {x:180, y:140}, {x:220, y:140}, {x:250, y:170}, 
+                {x:230, y:200}, {x:190, y:210}, {x:160, y:190},
+                {x:150, y:160}, {x:170, y:230}, {x:200, y:250},
+                {x:240, y:230}, {x:260, y:200}, {x:200, y:170}
+            ];
+            
+            // Combine all points
+            const allPoints = [...points, ...innerPoints];
+            
+            // Draw connections
+            for (let i = 0; i < allPoints.length; i++) {
+                // Connect each point to a few nearby points
+                for (let j = 1; j < 4; j++) {
+                    const next = (i + j) % allPoints.length;
+                    ctx.beginPath();
+                    ctx.moveTo(allPoints[i].x, allPoints[i].y);
+                    ctx.lineTo(allPoints[next].x, allPoints[next].y);
+                    ctx.stroke();
+                }
+                
+                // Add some random connections
+                if (i % 3 === 0) {
+                    const rand = Math.floor(Math.random() * allPoints.length);
+                    ctx.beginPath();
+                    ctx.moveTo(allPoints[i].x, allPoints[i].y);
+                    ctx.lineTo(allPoints[rand].x, allPoints[rand].y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw the nodes (orange circles)
+            ctx.fillStyle = '#FF9966';
+            allPoints.forEach(point => {
+                ctx.beginPath();
+                ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw the "Nest" text
+            ctx.font = 'bold 36px Arial';
+            ctx.fillStyle = '#b68e6e';
+            ctx.textAlign = 'center';
+            ctx.fillText('Nest', 200, 360);
+            
+            // Draw tagline
+            ctx.font = 'italic 14px Arial';
+            ctx.fillText('Think it. Note it. Own it.', 200, 380);
+        }
+        
+        // Draw the logo
+        drawBrainNetwork();
+        
+        // Download functionality
+        document.getElementById('download').addEventListener('click', function() {
+            const dataURL = canvas.toDataURL('image/jpeg', 1.0);
+            const link = document.createElement('a');
+            link.download = 'logo.jpeg';
+            link.href = dataURL;
+            link.click();
+        });
+    </script>
+</body>
+</html> 

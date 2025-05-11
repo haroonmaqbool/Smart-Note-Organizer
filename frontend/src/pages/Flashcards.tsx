@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Card,
@@ -29,7 +29,10 @@ import {
   Tooltip,
   InputAdornment,
   Backdrop,
-  Fade
+  Fade,
+  Select,
+  MenuItem,
+  Menu
 } from '@mui/material';
 import {
   NavigateNext as NextIcon,
@@ -43,18 +46,28 @@ import {
   Image as ImageIcon,
   Save as SaveIcon,
   Cancel as CancelIcon,
-  Delete as DeleteIcon,
+  DeleteOutlined as DeleteIcon,
   Search as SearchIcon,
   Clear as ClearIcon,
   Folder as FolderIcon,
   FlipToBack as FlipIcon,
-  Close as CloseIcon
+  Close as CloseIcon,
+  CloudDownload as CloudDownloadIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Edit as EditIcon,
+  Fullscreen as FullscreenIcon,
+  FullscreenExit as FullscreenExitIcon,
+  NoteAlt as NoteAltIcon,
+  ExpandMore as ExpandMoreIcon,
+  FilterList as FilterListIcon
 } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { api, AIModel, Flashcard as ApiFlashcard } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createWorker } from 'tesseract.js';
+import { useNotification } from '../components/Layout';
 
 interface Flashcard {
   id: string;
@@ -94,6 +107,9 @@ const Flashcards: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
   
+  // Add new state for study mode search
+  const [studyModeSearchQuery, setStudyModeSearchQuery] = useState('');
+  
   // Note-related state
   const [selectedNote, setSelectedNote] = useState<null | { id: string, title: string, content: string, tags: string[] }>(null);
   const [isGeneratingFromNote, setIsGeneratingFromNote] = useState(false);
@@ -108,6 +124,14 @@ const Flashcards: React.FC = () => {
   // Get flashcards from context
   const { state, dispatch } = useApp();
   const { flashcards } = state;
+  const { showNotification } = useNotification();
+
+  // Add this right after const { state, dispatch } = useApp();
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [flashcardToDelete, setFlashcardToDelete] = useState<Flashcard | null>(null);
+
+  // Add this state right after existing state declarations
+  const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
 
   // Add an effect to handle navigation and cleanup
   useEffect(() => {
@@ -169,6 +193,19 @@ const Flashcards: React.FC = () => {
   const notesWithFlashcards = useMemo(() => {
     return Array.from(flashcardsByNote.keys());
   }, [flashcardsByNote]);
+
+  // Filter notes with flashcards based on study mode search query
+  const filteredNotesWithFlashcards = useMemo(() => {
+    if (!studyModeSearchQuery.trim()) {
+      return notesWithFlashcards;
+    }
+
+    const query = studyModeSearchQuery.toLowerCase();
+    return notesWithFlashcards.filter(noteId => {
+      const note = state.notes.find(n => n.id === noteId);
+      return note && note.title.toLowerCase().includes(query);
+    });
+  }, [notesWithFlashcards, studyModeSearchQuery, state.notes]);
 
   useEffect(() => {
     // Get notes from app context
@@ -352,13 +389,9 @@ const Flashcards: React.FC = () => {
     // Dispatch action to add flashcards to global state
     dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
     
-    // Show success message and close dialog
-    setNotification({
-      open: true,
-      message: `${flashcardsToSave.length} flashcards saved successfully!`,
-      severity: 'success',
-      showViewButton: false
-    });
+    // Show success message with the global notification system
+    showNotification('created successfully', 'success', 'flashcard', selectedNote.title);
+    
     setNoteToFlashcardsDialogOpen(false);
     
     // Force redirect to dashboard at root path
@@ -385,6 +418,15 @@ const Flashcards: React.FC = () => {
     // Reset to first card and hide answer when search is cleared
     setCurrentIndex(0);
     setIsFlipped(false);
+  };
+
+  // Handlers for study mode search
+  const handleStudyModeSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setStudyModeSearchQuery(e.target.value);
+  };
+
+  const handleClearStudyModeSearch = () => {
+    setStudyModeSearchQuery('');
   };
 
   // Function to handle cancel during flashcard creation
@@ -434,13 +476,10 @@ const Flashcards: React.FC = () => {
     // Add to global state
     dispatch({ type: 'ADD_FLASHCARDS', payload: [flashcard] });
     
-    // Show success message
-    setNotification({
-      open: true,
-      message: 'Flashcard created successfully!',
-      severity: 'success',
-      showViewButton: false
-    });
+    // Show success message using global notification system
+    // Use the front side as the "title" of the flashcard
+    const flashcardTitle = newFlashcard.front.substring(0, 30) + (newFlashcard.front.length > 30 ? '...' : '');
+    showNotification('created successfully', 'success', 'flashcard', flashcardTitle);
     
     // Reset form
     resetCreationForm();
@@ -473,12 +512,9 @@ const Flashcards: React.FC = () => {
     a.click();
     URL.revokeObjectURL(url);
     
-    setNotification({
-      open: true,
-      message: `${cardsToExport.length} flashcard${cardsToExport.length > 1 ? 's' : ''} exported successfully!`,
-      severity: 'success',
-      showViewButton: false
-    });
+    // Use global notification system with a better message
+    showNotification(`exported to Anki format`, 'success', 'flashcard', 
+      `${cardsToExport.length} flashcard${cardsToExport.length > 1 ? 's' : ''}`);
   };
 
   // Get title of the currently active note
@@ -495,6 +531,68 @@ const Flashcards: React.FC = () => {
     setIsFlipped(!isFlipped);
   };
 
+  // Replace the handleDeleteFlashcard function with a function that deletes all cards in a note
+  const handleDeleteFlashcard = (cardId: string) => {
+    // Find the card to delete for confirmation
+    const cardToDelete = flashcards.find(card => card.id === cardId);
+    if (!cardToDelete) return;
+    
+    // Check if this card belongs to a note
+    if (cardToDelete.noteId) {
+      // Find all cards with the same noteId
+      const cardsFromSameNote = flashcards.filter(card => card.noteId === cardToDelete.noteId);
+      
+      // Set the cards for confirmation
+      setFlashcardToDelete(cardToDelete);
+      setDeleteConfirmOpen(true);
+    } else {
+      // If the card doesn't belong to a note, just delete the individual card
+      setFlashcardToDelete(cardToDelete);
+      setDeleteConfirmOpen(true);
+    }
+  };
+
+  const confirmDeleteFlashcard = () => {
+    if (!flashcardToDelete) return;
+    
+    // Check if this card belongs to a note
+    if (flashcardToDelete.noteId) {
+      // Find all cards with the same noteId
+      const cardsFromSameNote = flashcards.filter(card => card.noteId === flashcardToDelete.noteId);
+      
+      // Get the card IDs
+      const cardIds = cardsFromSameNote.map(card => card.id);
+      
+      // Delete each card
+      cardIds.forEach(id => {
+        dispatch({ type: 'DELETE_FLASHCARD', payload: id });
+      });
+      
+      // Show notification with count
+      showNotification(`${cardIds.length} flashcards deleted successfully`, 'success', 'flashcard');
+    } else {
+      // Just delete the single card
+      dispatch({ type: 'DELETE_FLASHCARD', payload: flashcardToDelete.id });
+      showNotification('Flashcard deleted successfully', 'success', 'flashcard');
+    }
+    
+    // Close dialog
+    setDeleteConfirmOpen(false);
+    setFlashcardToDelete(null);
+  };
+
+  // Add clearAllFlashcards function after confirmDeleteFlashcard
+  const clearAllFlashcards = () => {
+    // Dispatch the clear all action
+    dispatch({ type: 'CLEAR_FLASHCARDS' });
+    
+    // Show notification
+    showNotification('All flashcards deleted successfully', 'success', 'flashcard');
+    
+    // Close dialog
+    setClearAllConfirmOpen(false);
+  };
+
   const renderStudyMode = () => (
     <Box sx={{ mt: 3 }}>
       {/* Search Field - Only show if not in focused study mode */}
@@ -502,19 +600,19 @@ const Flashcards: React.FC = () => {
         <Paper sx={{ p: 2, mb: 3 }}>
           <TextField
             fullWidth
-            placeholder="Search notes to generate flashcards..."
-            value={searchQuery}
-            onChange={handleSearch}
+            placeholder="Search flashcards by note title..."
+            value={studyModeSearchQuery}
+            onChange={handleStudyModeSearch}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
                   <SearchIcon sx={{ color: 'text.secondary' }} />
                 </InputAdornment>
               ),
-              endAdornment: searchQuery && (
+              endAdornment: studyModeSearchQuery && (
                 <InputAdornment position="end">
                   <IconButton
-                    onClick={handleClearSearch} 
+                    onClick={handleClearStudyModeSearch} 
                     edge="end" 
                     size="small"
                     aria-label="Clear search"
@@ -634,7 +732,7 @@ const Flashcards: React.FC = () => {
             }}
           >
             <Grid container spacing={2}>
-              {notesWithFlashcards.map(noteId => {
+              {filteredNotesWithFlashcards.map(noteId => {
                 const noteCards = flashcardsByNote.get(noteId) || [];
                 const noteInfo = state.notes.find(n => n.id === noteId);
                 
@@ -652,10 +750,33 @@ const Flashcards: React.FC = () => {
                         '&:hover': {
                           transform: 'translateY(-4px)',
                           boxShadow: 3
-                        }
+                        },
+                        position: 'relative'
                       }}
                       onClick={() => viewExistingFlashcards(noteId)}
                     >
+                      <IconButton
+                        size="small"
+                        color="error"
+                        sx={{
+                          position: 'absolute',
+                          top: 8,
+                          right: 8,
+                          zIndex: 10,
+                          bgcolor: alpha(theme.palette.background.paper, 0.7),
+                          '&:hover': {
+                            bgcolor: alpha(theme.palette.error.light, 0.2),
+                          },
+                          transition: 'all 0.2s ease'
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation(); // Prevent opening the card
+                          handleDeleteFlashcard(noteCards[0].id); // Delete the first card of the note
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                      
                       <CardContent sx={{ flexGrow: 1 }}>
                         <Typography 
                           variant="h6" 
@@ -679,22 +800,31 @@ const Flashcards: React.FC = () => {
                       </CardContent>
                       
                       <Box sx={{ p: 2, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                        <Button
-                          variant="outlined"
-                          size="small"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            viewExistingFlashcards(noteId);
-                          }}
-                        >
-                          Study
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              viewExistingFlashcards(noteId);
+                            }}
+                          >
+                            Study
+                          </Button>
+                        </Box>
                       </Box>
                     </Card>
                   </Grid>
                 );
               })}
             </Grid>
+            {studyModeSearchQuery && filteredNotesWithFlashcards.length === 0 && (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <Typography variant="body1" color="text.secondary">
+                  No flashcard sets match "{studyModeSearchQuery}"
+                </Typography>
+              </Box>
+            )}
           </Box>
         </Box>
       )}
@@ -957,9 +1087,27 @@ const Flashcards: React.FC = () => {
 
       {/* All Flashcards Grid */}
       <Box sx={{ mt: 2 }}>
-        <Typography variant="h6" gutterBottom>
-          All Flashcards
-        </Typography>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: 2
+        }}>
+          <Typography variant="h6">
+            All Flashcards
+          </Typography>
+          {filteredFlashcards.length > 0 && (
+            <Button
+              variant="outlined"
+              color="error"
+              size="small"
+              startIcon={<DeleteIcon />}
+              onClick={() => setClearAllConfirmOpen(true)}
+            >
+              Clear All Flashcards
+            </Button>
+          )}
+        </Box>
         
         {filteredFlashcards.length > 0 ? (
           <Grid container spacing={2}>
@@ -1072,68 +1220,6 @@ const Flashcards: React.FC = () => {
       </Box>
     </Box>
   );
-
-  // Updated notification component
-  const renderNotification = () => {
-    // Auto-dismiss timer 
-    useEffect(() => {
-      if (notification.open) {
-        const timer = setTimeout(() => {
-          handleCloseNotification();
-        }, 5000); // 5 seconds auto-dismiss
-        
-        return () => clearTimeout(timer);
-      }
-    }, [notification.open]);
-    
-    return (
-      <Snackbar 
-        open={notification.open} 
-        autoHideDuration={5000}
-        onClose={handleCloseNotification}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        sx={{
-          '& .MuiPaper-root': {
-            minWidth: '300px',
-            maxWidth: '500px'
-          }
-        }}
-      >
-        <Alert 
-          severity={notification.severity} 
-          onClose={handleCloseNotification}
-          sx={{ 
-            width: '100%',
-            fontSize: '0.9rem',
-            alignItems: 'center'
-          }}
-          action={
-            notification.severity === 'success' && notification.showViewButton && (
-              <Button 
-                color="inherit" 
-                size="small"
-                onClick={() => navigate('/flashcards')}
-              >
-                View Cards
-              </Button>
-            )
-          }
-        >
-          {notification.message}
-        </Alert>
-      </Snackbar>
-    );
-  };
-
-  // Enhanced notification system with optional view button
-  const showNotification = (message: string, severity: 'success' | 'error' | 'info' | 'warning', showViewButton = false) => {
-    setNotification({
-      open: true,
-      message,
-      severity,
-      showViewButton
-    });
-  };
 
   return (
     <Box sx={{ px: { xs: 1, sm: 2 }, py: 2, maxWidth: '1200px', margin: '0 auto' }}>
@@ -1424,8 +1510,107 @@ const Flashcards: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Display notifications */}
-      {renderNotification()}
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete Flashcards</DialogTitle>
+        <DialogContent>
+          {flashcardToDelete?.noteId ? (
+            <Typography>
+              Are you sure you want to delete all flashcards related to this topic?
+            </Typography>
+          ) : (
+            <Typography>
+              Are you sure you want to delete this flashcard?
+            </Typography>
+          )}
+          {flashcardToDelete && (
+            <>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  mt: 2, 
+                  p: 2, 
+                  bgcolor: alpha(theme.palette.error.main, 0.05),
+                  borderRadius: 1,
+                  fontWeight: 'medium' 
+                }}
+              >
+                "{flashcardToDelete.front}"
+              </Typography>
+              
+              {flashcardToDelete.noteId && (
+                <Typography 
+                  variant="body2" 
+                  color="error"
+                  sx={{ mt: 1 }}
+                >
+                  This will delete all flashcards belonging to this topic.
+                </Typography>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)} color="primary">
+            Cancel
+          </Button>
+          <Button 
+            onClick={confirmDeleteFlashcard} 
+            color="error" 
+            variant="contained"
+            startIcon={<DeleteIcon />}
+          >
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Clear All Confirmation Dialog */}
+      <Dialog
+        open={clearAllConfirmOpen}
+        onClose={() => setClearAllConfirmOpen(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Clear All Flashcards</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete all flashcards? This action cannot be undone.
+          </Typography>
+          <Typography 
+            variant="body2" 
+            sx={{ 
+              mt: 2, 
+              p: 2, 
+              bgcolor: alpha(theme.palette.error.main, 0.05),
+              borderRadius: 1,
+              fontWeight: 'medium' 
+            }}
+          >
+            This will delete all {flashcards.length} flashcards.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setClearAllConfirmOpen(false)} color="primary">
+            Cancel
+          </Button>
+          <Button 
+            onClick={clearAllFlashcards} 
+            color="error" 
+            variant="contained"
+            startIcon={<DeleteIcon />}
+          >
+            Delete All
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Display notifications - now using global notification system */}
 
       {/* Create Flashcard Dialog */}
       <Dialog
@@ -1530,7 +1715,6 @@ const Flashcards: React.FC = () => {
           <Button 
             onClick={handleCancelCreation} 
             color="inherit"
-            startIcon={<CancelIcon />}
           >
             Cancel
           </Button>
@@ -1538,7 +1722,6 @@ const Flashcards: React.FC = () => {
             onClick={handleCreateFlashcard} 
             color="primary"
             variant="contained"
-            startIcon={<SaveIcon />}
             disabled={!newFlashcard.front.trim() || !newFlashcard.back.trim()}
           >
             Create Flashcard

@@ -134,12 +134,23 @@ export interface ChatbotResponse {
 async function generateFlashcardsWithOpenRouter(content: string, title?: string, tags?: string[]): Promise<ChatbotResponse | null> {
   try {
     console.log('Attempting OpenRouter API for flashcard generation');
-    const systemPrompt = `You are a helpful assistant that creates flashcards from text content. 
-Create 5-8 high-quality flashcards with questions and answers based on the content. 
+    const systemPrompt = `You are an expert educational content creator specializing in creating high-quality flashcards that promote deep learning and critical thinking.
+
+When creating flashcards, follow these principles:
+1. Create 5-8 specific, focused questions that target key concepts from the content
+2. Avoid generic prompts like "explain" or "describe"
+3. Use precise question formats that elicit specific knowledge:
+   - Instead of "What is X?", ask "How does X differ from Y?" or "What are the three primary characteristics of X?"
+   - Instead of "Explain concept X", ask "What problem does X solve?" or "What would happen if X were removed from the system?"
+   - Create application questions like "How would you apply X in situation Y?"
+   - Ask about relationships: "How does X relate to Y?" or "What is the significance of X in the context of Y?"
+4. For technical content, include specific numerical values, formulas, or procedures when relevant
+5. Ensure answers are comprehensive but concise, focusing on the exact information requested
+
 Return ONLY a JSON object with the following format:
 {
   "flashcards": [
-    {"question": "Question text", "answer": "Answer text", "tags": ["tag1", "tag2"]}
+    {"question": "Specific question text", "answer": "Precise answer text", "tags": ["tag1", "tag2"]}
   ],
   "tags": ["tag1", "tag2"],
   "summary": "Brief summary of the content",
@@ -312,11 +323,11 @@ export const api = {
             "messages": [
               {
                 "role": "system",
-                "content": "You are a helpful tagging assistant. Extract 3-5 relevant tags from the text. Return only a JSON array of tags, nothing else."
+                "content": "You are an expert tagging assistant that extracts relevant, specific, and descriptive tags from text. Extract 3-5 relevant tags based on the key concepts, themes, and topics in the content. Return only a valid JSON array of tags (strings), nothing else. Example: [\"tag1\", \"tag2\", \"tag3\"]"
               },
               {
                 "role": "user",
-                "content": `Extract 3-5 relevant keyword tags from this text: "${text.substring(0, 1000)}..."`
+                "content": `Extract 3-5 relevant keyword tags from this text, focusing on the main concepts and topics: "${text.substring(0, 1000)}..."`
               }
             ]
           })
@@ -327,31 +338,61 @@ export const api = {
           if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
             const content = llmData.choices[0].message.content;
             try {
-              // Try to extract JSON array from the response
-              let tags;
-              if (content.includes('[') && content.includes(']')) {
-                const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1);
-                tags = JSON.parse(jsonStr);
-              } else {
-                // If not in JSON format, try to extract as comma-separated list
-                tags = content.split(/,|\n/).map(tag => 
-                  tag.trim().replace(/^["']|["']$/g, '')
-                    .replace(/^-\s*/, '') // Remove leading dash if present
-                    .trim()
-                ).filter(tag => tag.length > 0);
+              // Try multiple approaches to extract the tags
+              let tags = null;
+              
+              // Approach 1: Direct JSON parse if the response is a valid JSON array
+              try {
+                if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+                  tags = JSON.parse(content);
+                }
+              } catch (directJsonError) {
+                console.warn('Direct JSON parse failed:', directJsonError);
               }
               
+              // Approach 2: Extract JSON array from the response content
+              if (!tags) {
+                try {
+                  if (content.includes('[') && content.includes(']')) {
+                    const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1);
+                    tags = JSON.parse(jsonStr);
+                  }
+                } catch (extractJsonError) {
+                  console.warn('Extracting JSON array failed:', extractJsonError);
+                }
+              }
+              
+              // Approach 3: Handle responses with tags on separate lines or comma-separated
+              if (!tags) {
+                tags = content.split(/[,\n]/).map(tag => {
+                  // Clean up the tag: remove quotes, dashes, brackets, etc.
+                  return tag.trim()
+                    .replace(/^["'\[\s-]*|["'\]\s]*$/g, '') // Remove quotes, brackets at start/end
+                    .replace(/^-\s*/, '') // Remove leading dash
+                    .trim();
+                }).filter(tag => tag.length > 0);
+              }
+              
+              // Validate we have tags and they are in the right format
               if (Array.isArray(tags) && tags.length > 0) {
-                console.log('OpenRouter API successfully generated tags:', tags);
-                return { 
-                  data: { 
-                    tags: tags.slice(0, 5), 
-                    model_used: "openrouter-llama3" 
-                  } 
-                };
+                // Clean up the tags to ensure they are strings and reasonably formatted
+                const cleanedTags = tags
+                  .map(tag => typeof tag === 'string' ? tag.trim() : String(tag).trim())
+                  .filter(tag => tag.length > 1)
+                  .slice(0, 5); // Limit to 5 tags
+                
+                if (cleanedTags.length > 0) {
+                  console.log('OpenRouter API successfully generated tags:', cleanedTags);
+                  return { 
+                    data: { 
+                      tags: cleanedTags, 
+                      model_used: "openrouter-llama3" 
+                    } 
+                  };
+                }
               }
             } catch (jsonError) {
-              console.warn('Error parsing OpenRouter response:', jsonError);
+              console.warn('Error processing OpenRouter response:', jsonError);
             }
           }
         }
@@ -456,21 +497,42 @@ export const api = {
       const simpleTags = tags || [];
       const simpleFlashcards: Flashcard[] = sentences.map(sentence => {
         const trimmedSentence = sentence.trim();
-        // Create a question by replacing key words or using "What/How/Why" templates
-        let question = trimmedSentence;
+        // Create more specific questions using various patterns
+        let question = "";
         
-        // Basic question transformation - replace key terms with blanks or create "what is" questions
+        // Enhanced question transformations for more specific questions
         if (trimmedSentence.includes(" is ")) {
           const parts = trimmedSentence.split(" is ");
-          question = `What is ${parts[0]}?`;
+          if (parts[0].length > 5) {
+            question = `What are the key characteristics of ${parts[0]}?`;
+          } else {
+            question = `How would you define ${parts[0]} and what is its significance?`;
+          }
         } else if (trimmedSentence.includes(" are ")) {
           const parts = trimmedSentence.split(" are ");
-          question = `What are ${parts[0]}?`;
+          question = `What functions or properties do ${parts[0]} have?`;
         } else if (trimmedSentence.match(/\b(because|due to|as a result of)\b/i)) {
-          question = `Why ${trimmedSentence.replace(/\b(because|due to|as a result of)\b.*/i, "?")}`;
+          question = `What causes or factors lead to ${trimmedSentence.replace(/\b(because|due to|as a result of)\b.*/i, "")}?`;
+        } else if (trimmedSentence.match(/\b(can|could|would|should)\b/i)) {
+          question = `Under what conditions ${trimmedSentence.replace(/\b(can|could|would|should)\b/i, "can")}?`;
+        } else if (trimmedSentence.includes(" to ")) {
+          const parts = trimmedSentence.split(" to ");
+          if (parts[0].length > 10) {
+            question = `What is the purpose or goal of ${parts[0]}?`;
+          } else {
+            question = `What approaches can be used to ${parts[1]}?`;
+          }
         } else {
-          // Default to "Explain" question
-          question = `Explain: ${trimmedSentence}`;
+          // Create a question based on the key nouns in the sentence
+          const words = trimmedSentence.split(" ");
+          const keyNouns = words.filter(w => w.length > 5).slice(0, 2);
+          
+          if (keyNouns.length > 0) {
+            question = `How does ${keyNouns[0]} contribute to the overall concept, and what would happen without it?`;
+          } else {
+            // Last resort - still better than "Explain"
+            question = `What is the significance of "${trimmedSentence.substring(0, 30)}..." in this context?`;
+          }
         }
         
         return {

@@ -20,7 +20,8 @@ import {
   TextField,
   Menu,
   MenuItem,
-  styled
+  styled,
+  LinearProgress
 } from '@mui/material';
 import {
   FormatBold,
@@ -90,20 +91,48 @@ const processDocx = async (arrayBuffer: ArrayBuffer): Promise<string> => {
 // PDF processing function
 const processPdf = async (arrayBuffer: ArrayBuffer): Promise<string> => {
   try {
+    console.log("Starting PDF processing...");
     const pdf = await getDocument({ data: arrayBuffer }).promise;
+    console.log("PDF loaded, number of pages:", pdf.numPages);
     let extractedText = '';
     
     for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      const pageText = content.items
-        .map((item: any) => item.str)
-        .join(' ');
-      
-      extractedText += pageText + '\n\n';
+      try {
+        console.log(`Processing page ${i} of ${pdf.numPages}...`);
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        
+        // More sophisticated text extraction
+        const pageText = content.items
+          .map((item: any) => {
+            // Some PDFs have items with empty strings or just spaces
+            if (!item.str.trim()) return '';
+            return item.str;
+          })
+          .join(' ')
+          .replace(/\s+/g, ' '); // Normalize spaces
+        
+        // Add page number for longer documents
+        const pageHeader = pdf.numPages > 1 ? `Page ${i}:\n` : '';
+        extractedText += pageHeader + pageText + '\n\n';
+        
+        console.log(`Page ${i} text extracted, length: ${pageText.length} characters`);
+      } catch (pageError) {
+        console.error(`Error processing page ${i}:`, pageError);
+        extractedText += `[Error extracting text from page ${i}]\n\n`;
+      }
     }
     
-    return extractedText || 'No text could be extracted from the PDF.';
+    // Clean up the extracted text
+    const cleanedText = extractedText
+      .replace(/\r\n/g, '\n')       // Normalize line endings
+      .replace(/\n{3,}/g, '\n\n')   // Remove excessive line breaks
+      .replace(/\s+/g, ' ')         // Normalize spaces
+      .trim();
+    
+    console.log("PDF processing complete, extracted text length:", cleanedText.length);
+    
+    return cleanedText || 'No text could be extracted from the PDF.';
   } catch (error) {
     console.error('Error processing PDF:', error);
     return 'Error processing PDF file. Please try a different file.';
@@ -170,6 +199,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const editorContentRef = useRef(initialContent);
+  const [isEditorEmpty, setIsEditorEmpty] = useState(initialContent === '');
   
   // Link dialog states
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -195,6 +225,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         editorRef.current.appendChild(tempDiv.firstChild);
       }
       editorContentRef.current = initialContent;
+      // Update empty state
+      setIsEditorEmpty(editorRef.current.innerHTML.trim() === '');
+      
       // Only focus and move caret to end on first mount
       if (firstMount.current) {
         editorRef.current.focus();
@@ -259,6 +292,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       // Call onChange immediately when content changes to update parent component
       console.log('Content changed to:', editorRef.current.innerHTML);
       onChange(editorRef.current.innerHTML);
+      
+      // Check if editor is empty and update state
+      setIsEditorEmpty(editorRef.current.innerHTML.trim() === '');
     }
   };
 
@@ -529,35 +565,93 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   // Insert text into editor
   const insertExtractedText = () => {
     if (editorRef.current && previewText) {
-      // Clean and format the text
-      const formattedText = previewText
-        .split('\n\n')
-        .map(paragraph => `<p>${paragraph.replace(/\n/g, ' ')}</p>`)
-        .join('');
-      
-      // Insert at cursor position if possible, otherwise append
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
+      try {
+        console.log("Inserting text into editor:", previewText.substring(0, 100) + "...");
         
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = formattedText;
+        // Check if text already contains HTML tags
+        const containsHtmlTags = /<[a-z][\s\S]*>/i.test(previewText);
         
-        const fragment = document.createDocumentFragment();
-        while (tempDiv.firstChild) {
-          fragment.appendChild(tempDiv.firstChild);
+        // Format the text appropriately based on content type
+        let formattedText = previewText;
+        if (!containsHtmlTags) {
+          // Clean and format plain text
+          formattedText = previewText
+            .split('\n\n')
+            .map(paragraph => {
+              // Skip empty paragraphs
+              if (!paragraph.trim()) return '';
+              // Replace single newlines with line breaks
+              return `<p>${paragraph.replace(/\n/g, '<br>')}</p>`
+            })
+            .filter(p => p) // Remove empty paragraphs
+            .join('');
         }
         
-        range.insertNode(fragment);
-      } else {
-        // Append to end if no selection
-        editorRef.current.innerHTML += formattedText;
+        // If still no content after formatting, add a paragraph
+        if (!formattedText.trim()) {
+          formattedText = '<p>Imported text appears to be empty.</p>';
+        }
+        
+        // Insert at cursor position if possible, otherwise append
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0 && editorRef.current.contains(selection.anchorNode)) {
+          const range = selection.getRangeAt(0);
+          range.deleteContents();
+          
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = formattedText;
+          
+          const fragment = document.createDocumentFragment();
+          while (tempDiv.firstChild) {
+            fragment.appendChild(tempDiv.firstChild);
+          }
+          
+          range.insertNode(fragment);
+          
+          // Move cursor to end of inserted content
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+        } else {
+          // Append to end if no selection or selection is outside editor
+          // Create a temporary container to hold the HTML
+          const temp = document.createElement('div');
+          temp.innerHTML = formattedText;
+          
+          // Append each child node to ensure proper insertion
+          while (temp.firstChild) {
+            editorRef.current.appendChild(temp.firstChild);
+          }
+        }
+        
+        // Force the editor to update
+        editorRef.current.focus();
+        
+        // Explicitly call the content change handler
+        handleContentChange();
+        
+        // Update empty state
+        setIsEditorEmpty(false);
+        
+        setShowPreview(false);
+        setPreviewText('');
+        
+        // Show success notification
+        setNotification({
+          open: true,
+          message: 'Text inserted successfully',
+          severity: 'success'
+        });
+        
+        console.log("Text insertion complete, editor content length:", editorRef.current.innerHTML.length);
+      } catch (error) {
+        console.error("Error inserting text:", error);
+        setNotification({
+          open: true,
+          message: 'Error inserting text into editor',
+          severity: 'error'
+        });
       }
-      
-      handleContentChange();
-      setShowPreview(false);
-      setPreviewText('');
     }
   };
 
@@ -719,13 +813,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'image/jpeg',
       'image/jpg',
-      'image/png'
+      'image/png',
+      'text/plain',
+      'text/csv',
+      'text/markdown',
+      'text/html'
     ];
     
-    if (!acceptedTypes.includes(file.type)) {
+    // Check file type or extension for text files
+    if (!acceptedTypes.includes(file.type) && 
+        !file.name.endsWith('.txt') && 
+        !file.name.endsWith('.md') && 
+        !file.name.endsWith('.csv')) {
       setNotification({
         open: true,
-        message: 'Unsupported file type. Please upload PDF, Word, PowerPoint, or image files.',
+        message: 'Unsupported file type. Please upload PDF, Word, PowerPoint, text, or image files.',
         severity: 'warning'
       });
       return;
@@ -733,11 +835,27 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     
     setIsProcessing(true);
     
-    // Create FormData for file upload
-    const formData = new FormData();
-    formData.append('file', file);
-    
     try {
+      // Handle different file types
+      if (file.type === 'application/pdf') {
+        await processPdfWithOcr(file);
+        return;
+      } else if (file.type.startsWith('text/') || 
+                file.name.endsWith('.txt') || 
+                file.name.endsWith('.md') || 
+                file.name.endsWith('.csv')) {
+        processTextFile(file);
+        return;
+      } else if (file.type.startsWith('image/')) {
+        // Process image with OCR
+        await runOcrOnImage(file);
+        return;
+      }
+      
+      // For other types (docx, pptx), use the existing API approach
+      const formData = new FormData();
+      formData.append('file', file);
+      
       const response = await fetch('/api/import/', {
         method: 'POST',
         body: formData,
@@ -749,42 +867,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       
       const data: ImportResponse = await response.json();
       
-      // Insert content into editor
-      if (editorRef.current && data.text) {
-        const importHeader = `<p><strong>Imported from:</strong> ${data.filename}</p>`;
-        const importContent = data.text
-          .split('\n\n')
-          .map(paragraph => `<p>${paragraph.replace(/\n/g, ' ')}</p>`)
-          .join('');
-        
-        // Insert at cursor position if possible, otherwise append
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          range.deleteContents();
-          
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = importHeader + importContent;
-          
-          const fragment = document.createDocumentFragment();
-          while (tempDiv.firstChild) {
-            fragment.appendChild(tempDiv.firstChild);
-          }
-          
-          range.insertNode(fragment);
-        } else {
-          // Append to end if no selection
-          editorRef.current.innerHTML += importHeader + importContent;
-        }
-        
-        handleContentChange();
-      }
-      
-      setNotification({
-        open: true,
-        message: 'File imported successfully',
-        severity: 'success'
-      });
+      // Set preview text instead of direct insertion
+      setPreviewText(data.text);
+      setShowPreview(true);
+      setIsProcessing(false);
       
     } catch (error) {
       console.error('Error importing file:', error);
@@ -793,9 +879,251 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         message: 'Error importing file. Please try again.',
         severity: 'error'
       });
-    } finally {
       setIsProcessing(false);
     }
+  };
+  
+  // Process PDF with OCR for scanned documents
+  const processPdfWithOcr = async (file: File) => {
+    try {
+      console.log("Processing PDF file:", file.name, "Size:", (file.size/1024).toFixed(2), "KB");
+      setNotification({
+        open: true,
+        message: 'Processing PDF file...',
+        severity: 'info'
+      });
+      
+      // First try to extract text directly from PDF
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        if (!e.target?.result) {
+          throw new Error("Failed to read file");
+        }
+        
+        try {
+          // Try to extract text normally first
+          const pdfData = e.target.result as ArrayBuffer;
+          console.log("PDF data loaded, size:", (pdfData.byteLength/1024).toFixed(2), "KB");
+          
+          const pdfText = await processPdf(pdfData);
+          console.log("Extracted PDF text length:", pdfText.length);
+          
+          // If minimal text is extracted, it might be a scanned document
+          // Determine if OCR is needed (simplified check)
+          const isTextTooShort = pdfText.replace(/\s+/g, '').length < 100;
+          
+          if (isTextTooShort) {
+            console.log("PDF appears to be scanned, minimal text extracted. Running OCR...");
+            setNotification({
+              open: true,
+              message: 'This appears to be a scanned PDF. Running OCR...',
+              severity: 'info'
+            });
+            
+            // Convert PDF to images and run OCR
+            await runOcrOnPdf(file);
+          } else {
+            // Format the extracted text for better display
+            const formattedText = pdfText
+              .split('\n\n')
+              .map(paragraph => {
+                if (!paragraph.trim()) return '';
+                return `<p>${paragraph.replace(/\n/g, ' ').trim()}</p>`;
+              })
+              .filter(p => p)
+              .join('');
+            
+            console.log("PDF text formatted, setting preview...");
+            
+            // Sufficient text was extracted
+            setPreviewText(formattedText);
+            setShowPreview(true);
+            setIsProcessing(false);
+            
+            setNotification({
+              open: true,
+              message: 'PDF processed successfully',
+              severity: 'success'
+            });
+          }
+        } catch (error) {
+          console.error('Error processing PDF, falling back to OCR:', error);
+          await runOcrOnPdf(file);
+        }
+      };
+      
+      reader.onerror = (error) => {
+        console.error("FileReader error:", error);
+        setNotification({
+          open: true,
+          message: 'Error reading the PDF file',
+          severity: 'error'
+        });
+        setIsProcessing(false);
+      };
+      
+      reader.readAsArrayBuffer(file);
+    } catch (error) {
+      console.error('PDF processing error:', error);
+      setNotification({
+        open: true,
+        message: 'Error processing the PDF. Please try again.',
+        severity: 'error'
+      });
+      setIsProcessing(false);
+    }
+  };
+  
+  // Run OCR on PDF using Tesseract
+  const runOcrOnPdf = async (file: File) => {
+    try {
+      console.log("Starting OCR processing for PDF:", file.name);
+      
+      // For simplicity, we'll use the first page of the PDF
+      // In a complete implementation, you would convert PDF pages to images first
+      setNotification({
+        open: true,
+        message: 'Running OCR on scanned document...',
+        severity: 'info'
+      });
+      
+      // Use Tesseract directly on the PDF file
+      Tesseract.recognize(file, 'eng', {
+        logger: (data) => {
+          if (data.status === 'recognizing text') {
+            const progress = Math.round(data.progress * 100);
+            console.log(`OCR progress: ${progress}%`);
+            setOcrProgress(progress);
+          } else {
+            console.log(`OCR status: ${data.status}`);
+          }
+        }
+      }).then(result => {
+        console.log("OCR completed successfully");
+        console.log("OCR result length:", result.data.text.length);
+        console.log("OCR text sample:", result.data.text.substring(0, 100) + "...");
+        
+        // Format the recognized text
+        const formattedText = result.data.text
+          .split('\n\n')
+          .map(paragraph => {
+            if (!paragraph.trim()) return '';
+            return `<p>${paragraph.replace(/\n/g, ' ').trim()}</p>`;
+          })
+          .filter(p => p)
+          .join('');
+        
+        setPreviewText(formattedText || '<p>OCR could not extract readable text from the document.</p>');
+        setShowPreview(true);
+        setIsProcessing(false);
+        
+        setNotification({
+          open: true,
+          message: 'OCR completed successfully!',
+          severity: 'success'
+        });
+      }).catch(error => {
+        console.error('OCR processing error:', error);
+        setNotification({
+          open: true,
+          message: 'Error processing the scanned document. Please try again.',
+          severity: 'error'
+        });
+        setIsProcessing(false);
+        
+        // Still show the preview dialog with error message
+        setPreviewText('<p>Error processing document. OCR could not extract text.</p>');
+        setShowPreview(true);
+      });
+    } catch (error) {
+      console.error('OCR error:', error);
+      setNotification({
+        open: true,
+        message: 'Error processing the scanned document. Please try again.',
+        severity: 'error'
+      });
+      setIsProcessing(false);
+      
+      // Still show the preview dialog with error message
+      setPreviewText('<p>Error processing document. OCR could not extract text.</p>');
+      setShowPreview(true);
+    }
+  };
+  
+  // Run OCR on images
+  const runOcrOnImage = async (file: File) => {
+    try {
+      setNotification({
+        open: true,
+        message: 'Running OCR on image...',
+        severity: 'info'
+      });
+      
+      Tesseract.recognize(file, 'eng', {
+        logger: (data) => {
+          if (data.status === 'recognizing text') {
+            setOcrProgress(Math.round(data.progress * 100));
+          }
+        }
+      }).then(result => {
+        console.log("Image OCR result:", result.data.text.substring(0, 100) + "...");
+        setPreviewText(result.data.text);
+        setShowPreview(true);
+        setIsProcessing(false);
+        
+        setNotification({
+          open: true,
+          message: 'OCR completed successfully!',
+          severity: 'success'
+        });
+      }).catch(error => {
+        console.error('OCR processing error:', error);
+        setNotification({
+          open: true,
+          message: 'Error processing the image. Please try again.',
+          severity: 'error'
+        });
+        setIsProcessing(false);
+      });
+    } catch (error) {
+      console.error('OCR error:', error);
+      setNotification({
+        open: true,
+        message: 'Error processing the image. Please try again.',
+        severity: 'error'
+      });
+      setIsProcessing(false);
+    }
+  };
+  
+  // Process text file
+  const processTextFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        const content = e.target.result as string;
+        console.log("Text file content length:", content.length);
+        
+        // Format plain text with paragraphs
+        const formattedText = content
+          .split(/\r?\n\r?\n/)
+          .map(para => `<p>${para.replace(/\r?\n/g, '<br>')}</p>`)
+          .join('');
+        
+        setPreviewText(formattedText);
+        setShowPreview(true);
+        setIsProcessing(false);
+      }
+    };
+    reader.onerror = () => {
+      setNotification({
+        open: true,
+        message: 'Error reading the text file',
+        severity: 'error'
+      });
+      setIsProcessing(false);
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -1066,7 +1394,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           />
           
           {/* Add Import File button to the toolbar */}
-          <Tooltip title="Import File (PDF, Word, Image, PPT)">
+          <Tooltip title="Import File (PDF, Word, Image, PPT, Text)">
             <IconButton 
               size="small" 
               disabled={isProcessing}
@@ -1088,7 +1416,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <input
             ref={importFileRef}
             type="file"
-            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png"
+            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.txt,.csv,.md,.html"
             style={{ display: 'none' }}
             onChange={handleFileSelect}
             disabled={isProcessing}
@@ -1172,39 +1500,107 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         data-placeholder={placeholder}
       />
       
+      {/* Import Button overlay - visible when editor is empty */}
+      {isEditorEmpty && (
+        <Box 
+          sx={{
+            position: 'absolute',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            opacity: 0.8,
+            pointerEvents: 'none',
+          }}
+        >
+          <Button
+            variant="outlined"
+            startIcon={<UploadFile />}
+            onClick={openImportDialog}
+            sx={{ 
+              pointerEvents: 'auto',
+              mb: 2,
+              borderColor: alpha(theme.palette.primary.main, 0.5),
+              '&:hover': {
+                borderColor: theme.palette.primary.main,
+                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              }
+            }}
+          >
+            Import File (PDF, Word, Image, Text)
+          </Button>
+        </Box>
+      )}
+      
       {/* OCR Preview Dialog */}
       <Dialog 
         open={showPreview} 
-        onClose={() => setShowPreview(false)}
+        onClose={() => !isProcessing && setShowPreview(false)}
         fullWidth
         maxWidth="md"
       >
         <DialogTitle>
           Document Text Preview
+          {isProcessing && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CircularProgress size={20} variant={ocrProgress > 0 ? "determinate" : "indeterminate"} value={ocrProgress} />
+                <Typography variant="caption" color="text.secondary">
+                  {ocrProgress > 0 ? `OCR Processing: ${ocrProgress}%` : 'Processing document...'}
+                </Typography>
+              </Box>
+              {ocrProgress > 0 && (
+                <Box sx={{ width: '100%', mt: 1 }}>
+                  <LinearProgress variant="determinate" value={ocrProgress} />
+                </Box>
+              )}
+            </Box>
+          )}
         </DialogTitle>
         <DialogContent>
-          <TextField
-            fullWidth
-            multiline
-            rows={10}
-            value={previewText}
-            onChange={(e) => setPreviewText(e.target.value)}
-            variant="outlined"
-            placeholder="Extracted text will appear here"
-            sx={{ my: 1 }}
-          />
-          <Typography variant="caption" color="text.secondary">
-            You can edit the text before inserting it into the editor.
-          </Typography>
+          {isProcessing ? (
+            <Box sx={{ py: 4, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
+              <CircularProgress size={40} variant={ocrProgress > 0 ? "determinate" : "indeterminate"} value={ocrProgress} />
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                {ocrProgress > 0 
+                  ? `Extracting text with OCR: ${ocrProgress}%` 
+                  : 'Processing document. Please wait...'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 1, maxWidth: 400, textAlign: 'center' }}>
+                For scanned documents, OCR processing may take some time depending on the document size and quality.
+              </Typography>
+            </Box>
+          ) : (
+            <>
+              <TextField
+                fullWidth
+                multiline
+                rows={10}
+                value={previewText}
+                onChange={(e) => setPreviewText(e.target.value)}
+                variant="outlined"
+                placeholder="Extracted text will appear here"
+                sx={{ my: 1 }}
+                disabled={isProcessing}
+              />
+              <Typography variant="caption" color="text.secondary">
+                You can edit the text before inserting it into the editor. For scanned documents, OCR might not be 100% accurate.
+              </Typography>
+            </>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowPreview(false)}>
+          <Button onClick={() => setShowPreview(false)} disabled={isProcessing}>
             Cancel
           </Button>
           <Button 
             variant="contained" 
             startIcon={<Check />}
             onClick={insertExtractedText}
+            disabled={isProcessing || !previewText}
           >
             Insert Text
           </Button>
@@ -1274,17 +1670,28 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 Drag & drop a file here, or click to select
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Supported formats: PDF, Word (DOCX), PowerPoint (PPTX), Images (JPG, PNG)
+                Supported formats: 
+                <br/>• PDF (with OCR for scanned documents)
+                <br/>• Text files (TXT, CSV, MD, HTML)
+                <br/>• Word documents (DOCX)
+                <br/>• PowerPoint presentations (PPTX)
+                <br/>• Images (JPG, PNG) with OCR
               </Typography>
               {isProcessing && (
-                <CircularProgress size={24} sx={{ mt: 2 }} />
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <CircularProgress size={24} sx={{ mt: 2 }} />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    {ocrProgress > 0 ? `OCR Processing: ${ocrProgress}%` : 'Processing file...'}
+                  </Typography>
+                </Box>
               )}
             </Box>
           </DropZone>
+          
           <input
             ref={importFileRef}
             type="file"
-            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png"
+            accept=".pdf,.docx,.pptx,.jpg,.jpeg,.png,.txt,.csv,.md,.html"
             style={{ display: 'none' }}
             onChange={handleFileSelect}
             disabled={isProcessing}

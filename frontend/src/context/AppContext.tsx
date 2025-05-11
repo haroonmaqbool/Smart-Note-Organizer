@@ -40,7 +40,8 @@ type AppAction =
   | { type: 'DELETE_FLASHCARD'; payload: string }
   | { type: 'SET_NOTES'; payload: Note[] }
   | { type: 'SET_FLASHCARDS'; payload: Flashcard[] }
-  | { type: 'CLEAR_NOTES' };
+  | { type: 'CLEAR_NOTES' }
+  | { type: 'CLEAR_FLASHCARDS' };
 
 // Load state from localStorage if available
 const loadInitialState = (): AppState => {
@@ -173,6 +174,12 @@ const appReducer = (state: AppState, action: AppAction): AppState => {
       newState = {
         ...state,
         notes: [],
+      };
+      break;
+    case 'CLEAR_FLASHCARDS':
+      newState = {
+        ...state,
+        flashcards: [],
       };
       break;
     default:

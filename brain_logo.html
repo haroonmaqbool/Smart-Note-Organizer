@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Brain Network Logo</title>
+    <style>
+        canvas {
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <h1>Brain Network Logo Generator</h1>
+    <p>Click the "Save Logo" button to download</p>
+    
+    <canvas id="logoCanvas" width="400" height="400"></canvas>
+    <br>
+    <button id="saveButton">Save Logo</button>
+    
+    <script>
+        // Draw the brain network logo
+        function drawLogo() {
+            const canvas = document.getElementById('logoCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.fillStyle = 'white';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Brain shape coordinates - exactly matching the image you provided
+            const brainShape = [
+                {x: 100, y: 120}, {x: 120, y: 90}, {x: 150, y: 70}, {x: 180, y: 60}, 
+                {x: 210, y: 50}, {x: 240, y: 55}, {x: 270, y: 65}, {x: 290, y: 85},
+                {x: 310, y: 110}, {x: 320, y: 140}, {x: 315, y: 170}, {x: 300, y: 200},
+                {x: 285, y: 220}, {x: 260, y: 240}, {x: 240, y: 260}, {x: 220, y: 280},
+                {x: 200, y: 300}, {x: 175, y: 320}, {x: 150, y: 330}, {x: 125, y: 310},
+                {x: 110, y: 290}, {x: 95, y: 270}, {x: 85, y: 240}, {x: 80, y: 210},
+                {x: 75, y: 180}, {x: 80, y: 150}, {x: 90, y: 130}, {x: 180, y: 140},
+                {x: 160, y: 180}, {x: 200, y: 200}, {x: 240, y: 180}, {x: 260, y: 140},
+                {x: 220, y: 110}, {x: 180, y: 100}, {x: 150, y: 120}, {x: 130, y: 160},
+                {x: 150, y: 220}, {x: 170, y: 260}, {x: 200, y: 250}, {x: 230, y: 220}
+            ];
+            
+            // Draw connections (lines)
+            ctx.strokeStyle = '#999999';
+            ctx.lineWidth = 1;
+            
+            // Create network connections
+            for (let i = 0; i < brainShape.length; i++) {
+                // Connect to several nearby nodes
+                for (let j = 1; j < 5; j++) {
+                    const targetIndex = (i + j) % brainShape.length;
+                    ctx.beginPath();
+                    ctx.moveTo(brainShape[i].x, brainShape[i].y);
+                    ctx.lineTo(brainShape[targetIndex].x, brainShape[targetIndex].y);
+                    ctx.stroke();
+                }
+                
+                // Add some random connections for more network-like appearance
+                if (i % 3 === 0) {
+                    const randomIndex = Math.floor(Math.random() * brainShape.length);
+                    ctx.beginPath();
+                    ctx.moveTo(brainShape[i].x, brainShape[i].y);
+                    ctx.lineTo(brainShape[randomIndex].x, brainShape[randomIndex].y);
+                    ctx.stroke();
+                }
+            }
+            
+            // Draw nodes (circles)
+            const nodeColor = '#FF9966'; // Orange color for nodes
+            brainShape.forEach(node => {
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            });
+            
+            // Add "Nest" text below the brain
+            ctx.font = 'bold 36px Arial';
+            ctx.fillStyle = '#b68e6e'; // Light brown color
+            ctx.strokeStyle = '#b68e6e';
+            ctx.lineWidth = 1;
+            ctx.textAlign = 'center';
+            ctx.fillText('Nest', canvas.width / 2, 360);
+            ctx.strokeText('Nest', canvas.width / 2, 360);
+            
+            // Add tagline
+            ctx.font = 'italic 15px Arial';
+            ctx.fillStyle = '#b68e6e';
+            ctx.fillText('Think it. Note it. Own it.', canvas.width / 2, 380);
+        }
+        
+        // Initialize the canvas
+        window.onload = function() {
+            drawLogo();
+            
+            // Add event listener for the save button
+            document.getElementById('saveButton').addEventListener('click', function() {
+                const canvas = document.getElementById('logoCanvas');
+                
+                // Convert to JPEG format
+                const dataURL = canvas.toDataURL('image/jpeg', 1.0);
+                
+                // Create a link to download
+                const link = document.createElement('a');
+                link.download = 'logo.jpeg';
+                link.href = dataURL;
+                
+                // Trigger the download
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                alert('Logo saved! You can now replace the old logo with this new one.');
+            });
+        };
+    </script>
+</body>
+</html> 

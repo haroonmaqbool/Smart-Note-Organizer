@@ -53,12 +53,14 @@ import { useApp } from '../context/AppContext';
 import { v4 as uuidv4 } from 'uuid';
 import { useNavigate, useLocation } from 'react-router-dom';
 import RichTextEditor from '../components/RichTextEditor';
+import { useNotification } from '../components/Layout';
 
 const NoteEditor: React.FC = () => {
   const theme = useTheme();
   const { state, dispatch } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showNotification } = useNotification();
   
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -191,7 +193,7 @@ const NoteEditor: React.FC = () => {
         
         if (simpleTags.length > 0) {
           setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
-          showSnackbarMessage('Tags generated with basic extraction (API error)', 'warning');
+          showSnackbarMessage('Tags generated using fallback extraction method', 'warning');
         } else {
           showSnackbarMessage(`Error generating tags: ${response.error}`, 'error');
         }
@@ -203,9 +205,9 @@ const NoteEditor: React.FC = () => {
       const simpleTags = extractSimpleTags(text);
       if (simpleTags.length > 0) {
         setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
-        showSnackbarMessage('Tags generated with basic extraction (error recovery)', 'warning');
+        showSnackbarMessage('Tags generated using fallback extraction method', 'warning');
       } else {
-        showSnackbarMessage('Failed to generate tags', 'error');
+        showSnackbarMessage('Failed to generate tags - please try again later', 'error');
       }
     } finally {
       setIsTaggingLoading(false);
@@ -445,7 +447,10 @@ const NoteEditor: React.FC = () => {
         // Save to state context
         dispatch({ type: 'ADD_NOTE', payload: note });
         
-        // Show success message
+        // Show success message with the global notification system
+        showNotification('created successfully', 'success', 'note', title);
+        
+        // Also show the local snackbar for other UI feedback
         showSnackbarMessage('Note saved successfully!', 'success', false);
       }
       
