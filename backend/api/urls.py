@@ -17,4 +17,5 @@ urlpatterns = [
     path('chatbot/', views.chatbot, name='chatbot'),
     path('generate-flashcards/', views.generate_flashcards, name='generate_flashcards'),
     path('import/', views.import_file, name='import_file'),
+    path('flashcards/batch/', views.batch_create_flashcards, name='batch_create_flashcards'),
 ] 

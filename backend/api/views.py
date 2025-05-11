@@ -82,11 +82,102 @@ def health_check(request):
 class NoteViewSet(viewsets.ModelViewSet):
     queryset = Note.objects.all()
     serializer_class = NoteSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Custom create method to ensure unique IDs and prevent duplication on refresh"""
+        # Log the incoming data for debugging
+        print(f"Creating new note with data: {request.data}")
+        
+        # Validate that we have an ID in the request
+        if 'id' not in request.data:
+            return Response(
+                {"error": "Note ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Check if a note with this ID already exists
+        note_id = request.data['id']
+        existing_note = Note.objects.filter(id=note_id).first()
+        
+        if existing_note:
+            # If this is the same note (likely from a page refresh), return it without creating a duplicate
+            if (existing_note.title == request.data.get('title', '') and 
+                existing_note.content == request.data.get('content', '')):
+                print(f"Note already exists with ID: {note_id}, returning existing note")
+                serializer = self.get_serializer(existing_note)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            # Otherwise it's a different note with the same ID, generate a new ID
+            import uuid
+            new_id = f"note-{uuid.uuid4()}"
+            # Update the request data with the new ID
+            mutable_data = request.data.copy()
+            mutable_data['id'] = new_id
+            # Create a new serializer with the modified data
+            serializer = self.get_serializer(data=mutable_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            print(f"Created new note with modified ID: {new_id}")
+            return Response(
+                serializer.data, 
+                status=status.HTTP_201_CREATED, 
+                headers=headers
+            )
+            
+        # No conflict, proceed with normal creation
+        return super().create(request, *args, **kwargs)
 
 # Flashcard viewset for CRUD operations
 class FlashcardViewSet(viewsets.ModelViewSet):
     queryset = Flashcard.objects.all()
     serializer_class = FlashcardSerializer
+    
+    def create(self, request, *args, **kwargs):
+        """Custom create method to ensure unique IDs and prevent duplication on refresh"""
+        # Log the incoming data for debugging
+        print(f"Creating new flashcard with data: {request.data}")
+        
+        # Validate that we have an ID in the request
+        if 'id' not in request.data:
+            return Response(
+                {"error": "Flashcard ID is required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        # Check if a flashcard with this ID already exists
+        flashcard_id = request.data['id']
+        existing_flashcard = Flashcard.objects.filter(id=flashcard_id).first()
+        
+        if existing_flashcard:
+            # If this is the same flashcard (likely from a page refresh), return it without creating a duplicate
+            if (existing_flashcard.title == request.data.get('title', '') and 
+                existing_flashcard.question == request.data.get('question', '') and
+                existing_flashcard.answer == request.data.get('answer', '')):
+                print(f"Flashcard already exists with ID: {flashcard_id}, returning existing flashcard")
+                serializer = self.get_serializer(existing_flashcard)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+            
+            # Otherwise it's a different flashcard with the same ID, generate a new ID
+            import uuid
+            new_id = f"flashcard-{uuid.uuid4()}"
+            # Update the request data with the new ID
+            mutable_data = request.data.copy()
+            mutable_data['id'] = new_id
+            # Create a new serializer with the modified data
+            serializer = self.get_serializer(data=mutable_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            print(f"Created new flashcard with modified ID: {new_id}")
+            return Response(
+                serializer.data, 
+                status=status.HTTP_201_CREATED, 
+                headers=headers
+            )
+            
+        # No conflict, proceed with normal creation
+        return super().create(request, *args, **kwargs)
 
 # Summarize text endpoint
 @api_view(['POST'])
@@ -581,3 +672,21 @@ def import_file(request):
         logger.error(f"Unexpected error processing {file.name}: {str(e)}")
         return Response({"error": f"Error processing file: {str(e)}"}, 
                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@parser_classes([JSONParser])
+def batch_create_flashcards(request):
+    """Batch create flashcards from a list of flashcard data."""
+    flashcards_data = request.data.get('flashcards', [])
+    created = []
+    errors = []
+    for card_data in flashcards_data:
+        serializer = FlashcardSerializer(data=card_data)
+        if serializer.is_valid():
+            serializer.save()
+            created.append(serializer.data)
+        else:
+            errors.append(serializer.errors)
+    if errors:
+        return Response({'created': created, 'errors': errors}, status=status.HTTP_207_MULTI_STATUS)
+    return Response(created, status=status.HTTP_201_CREATED)

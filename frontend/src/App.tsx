@@ -263,201 +263,188 @@ const theme = responsiveFontSizes(createAppTheme('dark'));
 
 // Separate component to handle data loading
 const DataLoader: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [backendReady, setBackendReady] = useState<boolean>(false);
-  const [showNotification, setShowNotification] = useState<boolean>(false);
-  const [retryCount, setRetryCount] = useState<number>(0);
-  const { dispatch } = useApp();
+  const [isLoading, setIsLoading] = useState(true);
+  const [backendReady, setBackendReady] = useState(false);
+  const [showNotification, setShowNotification] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const { state, dispatch } = useApp();
+
+  // Initial data loading from localStorage and backend
+  useEffect(() => {
+    // Load data from localStorage first (already done in AppContext)
+    
+    // Then try to fetch from backend
+    const initializeData = async () => {
+      try {
+        console.log('Attempting to load notes from backend database...');
+        const connected = await api.checkConnection();
+        
+        if (connected) {
+          setBackendReady(true);
+          const healthResponse = await api.healthCheck();
+          
+          if (healthResponse && healthResponse.status === 'healthy') {
+            // Fetch notes and flashcards from backend
+            const notesResponse = await api.getNotes();
+            const flashcardsResponse = await api.getFlashcards();
+            
+            if (notesResponse.data) {
+              console.log(`Loaded ${notesResponse.data.length} notes from backend database`);
+              // Use SET_NOTES to replace any notes loaded from localStorage
+              if (notesResponse.data.length > 0) {
+                dispatch({ type: 'SET_NOTES', payload: notesResponse.data });
+              }
+            } else if (notesResponse.error) {
+              console.error('Error loading notes from backend:', notesResponse.error);
+            }
+            
+            if (flashcardsResponse.data) {
+              console.log(`Loaded ${flashcardsResponse.data.length} flashcards from backend database`);
+              // Use SET_FLASHCARDS to replace any flashcards loaded from localStorage
+              if (flashcardsResponse.data.length > 0) {
+                dispatch({ type: 'SET_FLASHCARDS', payload: flashcardsResponse.data });
+              }
+            } else if (flashcardsResponse.error) {
+              console.error('Error loading flashcards from backend:', flashcardsResponse.error);
+            }
+          } else {
+            console.warn('Backend health check failed, using data from localStorage');
+          }
+        } else {
+          console.warn('Backend not connected, using data from localStorage');
+          setBackendReady(false);
+          if (retryCount >= 2) {
+            setShowNotification(true);
+            api.enableMockMode();
+          }
+        }
+      } catch (error) {
+        console.error('Failed to initialize data from backend:', error);
+        setBackendReady(false);
+        if (retryCount >= 2) {
+          setShowNotification(true);
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    initializeData();
+  }, [dispatch, retryCount]);
   
-  // Function to fetch notes and flashcards from backend
   const fetchNotesAndFlashcards = useCallback(async () => {
     try {
-      // Fetch notes
-      const notesResponse = await fetch(`${API_BASE_URL}/notes/`);
-      if (notesResponse.ok) {
-        const notesData = await notesResponse.json();
-        // Transform data to match frontend format and dispatch to context
-        const notes = notesData.map((note: any) => ({
-          id: note.id,
-          title: note.title,
-          content: note.content,
-          summary: note.summary,
-          tags: note.tags,
-          createdAt: new Date(note.created_at),
-          updatedAt: new Date(note.updated_at)
-        }));
-        
-        dispatch({ type: 'SET_NOTES', payload: notes });
-        console.log('Notes loaded:', notes.length);
+      // Only try to fetch from backend if it's available
+      const notesResponse = await api.getNotes();
+      const flashcardsResponse = await api.getFlashcards();
+      
+      if (notesResponse.data && !notesResponse.error) {
+        dispatch({ type: 'SET_NOTES', payload: notesResponse.data });
       }
       
-      // Fetch flashcards
-      const flashcardsResponse = await fetch(`${API_BASE_URL}/flashcards/`);
-      if (flashcardsResponse.ok) {
-        const flashcardsData = await flashcardsResponse.json();
-        // Transform data to match frontend format and dispatch to context
-        const flashcards = flashcardsData.map((card: any) => ({
-          id: card.id,
-          front: card.question,
-          back: card.answer,
-          tags: card.tags,
-          createdAt: new Date(card.created_at)
-        }));
-        
-        dispatch({ type: 'SET_FLASHCARDS', payload: flashcards });
-        console.log('Flashcards loaded:', flashcards.length);
+      if (flashcardsResponse.data && !flashcardsResponse.error) {
+        dispatch({ type: 'SET_FLASHCARDS', payload: flashcardsResponse.data });
       }
     } catch (error) {
-      console.error('Error fetching data from backend:', error);
+      console.error('Error fetching data:', error);
     }
   }, [dispatch]);
   
-  // Close connection notification
-  const handleCloseNotification = () => {
-    setShowNotification(false);
-  };
-
-  // Try to start the backend server
-  const startBackendServer = useCallback(async () => {
-    // This is just a placeholder - in a real app you'd have a way to start the server
-    // or provide instructions to the user on how to start it
-    console.log('Attempting to connect to backend...');
-    
-    // Simply update the UI to show we're retrying
-    setRetryCount(prev => prev + 1);
-    
-    // Check connection again
-    const connected = await api.checkConnection();
-    if (connected) {
-      console.log('Backend connection established on retry');
-      setBackendReady(true);
-      fetchNotesAndFlashcards();
-    } else {
-      console.error('Backend still unavailable after retry attempt');
-    }
-  }, [fetchNotesAndFlashcards]);
-  
   useEffect(() => {
-    let connected = false;
-    let isMounted = true; // Flag to track if component is mounted
+    let isMounted = true;
     
-    // Check backend connectivity on startup
     const checkBackendStatus = async () => {
-      if (!isMounted) return; // Don't proceed if unmounted
+      if (!isMounted) return;
       
       try {
-        // First try to connect
-        connected = await api.checkConnection();
+        const connected = await api.checkConnection();
         
         if (connected) {
-          console.log('Backend connection established');
           setBackendReady(true);
           setShowNotification(false);
           
-          // Also check the health endpoint for more details
           const healthResponse = await api.healthCheck();
           if (healthResponse && healthResponse.status === 'healthy') {
-            console.log('Backend is healthy:', healthResponse);
-            
-            // Fetch notes and flashcards after confirming backend is available
-            fetchNotesAndFlashcards();
-          } else {
-            console.warn('Backend is connected but health check indicates issues:', healthResponse);
-            // Still set to ready since basic connectivity is working
-            setBackendReady(true);
+            await fetchNotesAndFlashcards();
           }
         } else {
-          console.error('Cannot connect to backend services');
           setBackendReady(false);
-          
-          // Only show notification after first 2 failed attempts
           if (retryCount >= 2) {
             setShowNotification(true);
-            
-            // Enable mock mode after retrying
-            if (!api.isMockModeEnabled()) {
-              api.enableMockMode();
-              // Load mock data into the app state
-              dispatch({ 
-                type: 'SET_NOTES', 
-                payload: MOCK_DATA.notes.map((note: any) => ({
-                  id: note.id,
-                  title: note.title,
-                  content: note.content,
-                  summary: note.summary,
-                  tags: note.tags,
-                  createdAt: new Date(note.created_at),
-                  updatedAt: new Date(note.updated_at)
-                }))
-              });
-              
-              dispatch({ 
-                type: 'SET_FLASHCARDS', 
-                payload: MOCK_DATA.flashcards.map((card: any) => ({
-                  id: card.id,
-                  front: card.question,
-                  back: card.answer,
-                  tags: card.tags,
-                  createdAt: new Date(card.created_at)
-                }))
-              });
-              
-              console.log('Loaded mock data as backend is unavailable');
-            }
+            api.enableMockMode();
+            // We don't need to load mock data here because AppContext already loaded from localStorage
           }
         }
       } catch (error) {
         console.error('Failed to check backend connectivity:', error);
         setBackendReady(false);
-        
-        // Only show notification after first 2 failed attempts
         if (retryCount >= 2) {
           setShowNotification(true);
         }
       }
     };
     
-    checkBackendStatus();
-    
-    // Recheck every 30 seconds instead of 15 to reduce frequency
+    // Check periodically (every 30 seconds)
     const interval = setInterval(checkBackendStatus, 30000);
     
-    // Cleanup function
     return () => {
-      isMounted = false; // Set flag to false when unmounting
+      isMounted = false;
       clearInterval(interval);
     };
-  }, [fetchNotesAndFlashcards, retryCount, dispatch]);
+  }, [fetchNotesAndFlashcards, retryCount]);
+
+  if (isLoading) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        backgroundColor: 'inherit'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <h2>Loading your notes...</h2>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
       {children}
-      
-      {/* Snackbar notification instead of fixed banner */}
       <Snackbar 
         open={showNotification && !backendReady} 
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        autoHideDuration={null} // Don't auto-hide
+        autoHideDuration={null}
         sx={{
           boxShadow: 'none',
           '& .MuiPaper-root': {
-            backgroundColor: 'error.main', // Use direct color instead of alpha
+            backgroundColor: 'error.main',
           }
         }}
       >
         <Alert 
           severity="error" 
-          variant="standard" // Changed from filled to standard for better performance
-          onClose={handleCloseNotification}
+          variant="standard"
+          onClose={() => setShowNotification(false)}
           action={
             <Button 
               color="inherit" 
               size="small" 
-              onClick={startBackendServer}
+              onClick={() => {
+                setRetryCount(prev => prev + 1);
+                api.checkConnection().then(connected => {
+                  if (connected) {
+                    setBackendReady(true);
+                    fetchNotesAndFlashcards();
+                  }
+                });
+              }}
             >
               Retry
             </Button>
           }
-          sx={{ width: '100%', boxShadow: 'none' }} // Remove shadow
+          sx={{ width: '100%', boxShadow: 'none' }}
         >
           Cannot connect to backend services. Some features might not work properly.
         </Alert>

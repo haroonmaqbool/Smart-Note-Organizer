@@ -76,6 +76,7 @@ interface Flashcard {
   tags: string[];
   noteId?: string;
   createdAt: Date;
+  recentlySaved?: boolean; // Flag for recently saved flashcards
 }
 
 // Define tab values
@@ -133,6 +134,20 @@ const Flashcards: React.FC = () => {
   // Add this state right after existing state declarations
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
 
+  // Add a state for the tab that should pulse/highlight
+  const [highlightTab, setHighlightTab] = useState<TabValue | null>(null);
+  
+  // When a tab is highlighted, clear it after a delay
+  useEffect(() => {
+    if (highlightTab) {
+      const timer = setTimeout(() => {
+        setHighlightTab(null);
+      }, 3000); // Clear highlight after 3 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [highlightTab]);
+
   // Add an effect to handle navigation and cleanup
   useEffect(() => {
     // This effect runs when the component mounts
@@ -155,9 +170,40 @@ const Flashcards: React.FC = () => {
   const filteredFlashcards = useMemo(() => {
     let cards = [...flashcards];
     
-    // Filter by active note if in byNote mode
-    if (viewMode === 'byNote' && activeNoteId) {
+    // First, deduplicate flashcards by content
+    // Use a Map to identify duplicates with similar front/back content
+    const uniqueCards = new Map<string, Flashcard>();
+    
+    cards.forEach(card => {
+      // Create a key combining the front and back text (normalized)
+      const contentKey = `${card.front.trim().toLowerCase()}|${card.back.trim().toLowerCase()}`;
+      
+      // Only keep the first occurrence of each card with the same content
+      if (!uniqueCards.has(contentKey)) {
+        uniqueCards.set(contentKey, card);
+      }
+    });
+    
+    // Convert back to array
+    cards = Array.from(uniqueCards.values());
+    
+    console.log(`Removed ${flashcards.length - cards.length} duplicate flashcards`);
+    
+    // Filter by active note if in byNote mode or focused study mode
+    if ((viewMode === 'byNote' || focusedStudyMode) && activeNoteId) {
+      console.log('Filtering cards for note ID:', activeNoteId);
+      // Debug what's available
+      const notesWithCards = cards.filter(card => card.noteId).map(card => card.noteId);
+      console.log('Available note IDs with cards:', [...new Set(notesWithCards)]);
+      
       cards = cards.filter(card => card.noteId === activeNoteId);
+      console.log('Found cards for this note:', cards.length);
+    }
+    
+    // When in study mode tab but not in focused study mode, don't show any cards
+    // This ensures cards are only shown when a specific note is selected for study
+    if (activeTab === 'study' && !focusedStudyMode) {
+      return [];
     }
     
     // Filter by search query regardless of mode
@@ -173,19 +219,47 @@ const Flashcards: React.FC = () => {
     }
     
     return cards;
-  }, [flashcards, searchQuery, viewMode, activeNoteId]);
+  }, [flashcards, searchQuery, viewMode, activeNoteId, focusedStudyMode, activeTab]);
 
   // Group flashcards by note for easier navigation
   const flashcardsByNote = useMemo(() => {
     const byNote = new Map<string, Flashcard[]>();
     
+    // Log for debugging
+    console.log('Total flashcards to organize by note:', flashcards.length);
+    // Count flashcards with noteId
+    const flashcardsWithNoteId = flashcards.filter(card => card.noteId);
+    console.log('Flashcards with noteId:', flashcardsWithNoteId.length);
+    
+    // Deduplicate cards per note based on content
+    const groupedCards = new Map<string, Map<string, Flashcard>>();
+    
+    // First group cards by noteId and deduplicate within each group
     flashcards.forEach(card => {
       if (card.noteId) {
-        const existingCards = byNote.get(card.noteId) || [];
-        byNote.set(card.noteId, [...existingCards, card]);
+        // Create or get the map for this noteId
+        if (!groupedCards.has(card.noteId)) {
+          groupedCards.set(card.noteId, new Map<string, Flashcard>());
+        }
+        
+        const noteCards = groupedCards.get(card.noteId)!;
+        // Create a key combining the front and back text (normalized)
+        const contentKey = `${card.front.trim().toLowerCase()}|${card.back.trim().toLowerCase()}`;
+        
+        // Only keep the first occurrence of each card with the same content
+        if (!noteCards.has(contentKey)) {
+          noteCards.set(contentKey, card);
+        }
       }
     });
     
+    // Convert to the final structure
+    groupedCards.forEach((uniqueCardsMap, noteId) => {
+      byNote.set(noteId, Array.from(uniqueCardsMap.values()));
+    });
+    
+    // Log the result
+    console.log('Notes with flashcards:', byNote.size);
     return byNote;
   }, [flashcards]);
   
@@ -288,11 +362,24 @@ const Flashcards: React.FC = () => {
 
   // Function to check if a note already has flashcards
   const noteHasFlashcards = (noteId: string): boolean => {
-    return notesWithFlashcards.includes(noteId);
+    // Check directly from the global flashcards array
+    const hasCards = flashcards.some(card => card.noteId === noteId);
+    console.log(`Note ${noteId} has flashcards: ${hasCards}`);
+    return hasCards;
   };
   
   // Function to view existing flashcards for a note
   const viewExistingFlashcards = (noteId: string) => {
+    console.log('Viewing flashcards for note ID:', noteId);
+    // First, check if this note actually has flashcards
+    const noteCards = flashcards.filter(card => card.noteId === noteId);
+    console.log(`Found ${noteCards.length} flashcards for note ID ${noteId}`);
+    
+    if (noteCards.length === 0) {
+      showNotification('No flashcards found for this note.', 'warning', 'flashcard');
+      return;
+    }
+    
     setActiveNoteId(noteId);
     setViewMode('byNote');
     setActiveTab('study');
@@ -373,29 +460,108 @@ const Flashcards: React.FC = () => {
   };
   
   // Add a function to save flashcards generated from a note
-  const handleSaveNoteFlashcards = () => {
+  const handleSaveNoteFlashcards = async () => {
     if (!selectedNote) return;
     
-    // Convert the API flashcard format to the app's flashcard format
-    const flashcardsToSave = generatedFlashcards.map(card => ({
-      id: uuidv4(),
-      front: card.question,
-      back: card.answer,
-      tags: [...card.tags],
-      noteId: selectedNote.id,
-      createdAt: new Date()
-    }));
-    
-    // Dispatch action to add flashcards to global state
-    dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
-    
-    // Show success message with the global notification system
-    showNotification('created successfully', 'success', 'flashcard', selectedNote.title);
-    
-    setNoteToFlashcardsDialogOpen(false);
-    
-    // Force redirect to dashboard at root path
-    window.location.href = '/';
+    try {
+      // Check for existing flashcards with similar content
+      const existingFlashcards = flashcards.filter(card => card.noteId === selectedNote.id);
+      
+      // Convert the API flashcard format to the app's flashcard format,
+      // but skip any that would be duplicates of existing cards
+      const existingContentMap = new Map<string, boolean>();
+      
+      // Create a map of existing content to check against
+      existingFlashcards.forEach(card => {
+        const contentKey = `${card.front.trim().toLowerCase()}|${card.back.trim().toLowerCase()}`;
+        existingContentMap.set(contentKey, true);
+      });
+      
+      // Filter out new flashcards that would duplicate existing ones
+      const uniqueNewFlashcards = generatedFlashcards.filter(card => {
+        const contentKey = `${card.question.trim().toLowerCase()}|${card.answer.trim().toLowerCase()}`;
+        return !existingContentMap.has(contentKey);
+      });
+      
+      console.log(`Found ${generatedFlashcards.length - uniqueNewFlashcards.length} duplicate flashcards that will be skipped`);
+      
+      const flashcardsToSave = uniqueNewFlashcards.map(card => ({
+        id: `flashcard-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+        front: card.question,
+        back: card.answer,
+        tags: [...card.tags],
+        noteId: selectedNote.id,
+        createdAt: new Date(),
+        recentlySaved: true // Mark as recently saved for highlighting
+      }));
+      
+      // Log for debugging
+      console.log('Saving flashcards associated with note ID:', selectedNote.id);
+      console.log('Total flashcards to save:', flashcardsToSave.length);
+      
+      if (flashcardsToSave.length === 0) {
+        showNotification(`No new flashcards to save for "${selectedNote.title}"`, 'info', 'flashcard');
+        setNoteToFlashcardsDialogOpen(false);
+        return;
+      }
+      
+      // Add flashcards directly to the app state first for immediate feedback
+      dispatch({ type: 'ADD_FLASHCARDS', payload: flashcardsToSave });
+      
+      // Then save each flashcard to the backend
+      try {
+        const savePromises = flashcardsToSave.map(card => 
+          api.createFlashcard({
+            front: card.front,
+            back: card.back,
+            tags: card.tags,
+            noteId: card.noteId
+          })
+        );
+        
+        await Promise.all(savePromises);
+        
+        // Show notification with proper parameters
+        showNotification(
+          `flashcards saved and ready to study!`, 
+          'success', 
+          'flashcard',
+          selectedNote.title
+        );
+        
+        // Close the dialog
+        setNoteToFlashcardsDialogOpen(false);
+        
+        // Reset the current index to show the first card
+        setCurrentIndex(0);
+        
+        // Ensure answer is hidden when starting study mode
+        setIsFlipped(false);
+        
+        // Switch to study mode tab to show the newly created flashcards
+        setActiveTab('study' as TabValue);
+        
+        // Set to show flashcards for the selected note in study mode
+        setActiveNoteId(selectedNote.id);
+        setViewMode('byNote');
+        setFocusedStudyMode(true);
+        
+        // Clear search filters
+        setSearchQuery('');
+        setStudyModeSearchQuery('');
+        
+        // Set highlight on the Study Mode tab to draw user's attention
+        setHighlightTab('study');
+        
+        console.log("Switched to study mode view to show saved flashcards");
+      } catch (error) {
+        console.error('Error saving flashcards to backend:', error);
+        showNotification(`"${selectedNote.title}" Failed to save flashcards. Please try again.`, 'error', 'flashcard');
+      }
+    } catch (error) {
+      console.error('Error in handleSaveNoteFlashcards:', error);
+      showNotification(`"${selectedNote.title}" Failed to save flashcards. Please try again.`, 'error', 'flashcard');
+    }
   };
 
   // Handle closing focused study mode
@@ -593,6 +759,23 @@ const Flashcards: React.FC = () => {
     setClearAllConfirmOpen(false);
   };
 
+  // Effect to clear the recentlySaved flag after a delay
+  useEffect(() => {
+    const recentlySavedCards = flashcards.filter(card => card.recentlySaved);
+    
+    if (recentlySavedCards.length > 0) {
+      const timer = setTimeout(() => {
+        // Update each card to remove the recentlySaved flag
+        recentlySavedCards.forEach(card => {
+          const updatedCard = { ...card, recentlySaved: false };
+          dispatch({ type: 'UPDATE_FLASHCARD', payload: updatedCard });
+        });
+      }, 5000); // Clear after 5 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [flashcards, dispatch]);
+
   const renderStudyMode = () => (
     <Box sx={{ mt: 3 }}>
       {/* Search Field - Only show if not in focused study mode */}
@@ -675,13 +858,33 @@ const Flashcards: React.FC = () => {
           justifyContent: 'space-between', 
           alignItems: 'center', 
           mb: 3,
-          p: 2,
+          p: 3,
           bgcolor: alpha(theme.palette.primary.main, 0.08),
-          borderRadius: 2
+          borderRadius: 2,
+          border: highlightTab === 'study' ? `2px solid ${theme.palette.secondary.main}` : 'none',
+          boxShadow: highlightTab === 'study' ? 3 : 1
         }}>
-          <Typography variant="h6">
-            Studying: {getActiveNoteTitle()}
-          </Typography>
+          <Box>
+            <Typography variant="h6" fontWeight="bold">
+              Studying: {getActiveNoteTitle()}
+              {highlightTab === 'study' && (
+                <Box component="span" sx={{ 
+                  ml: 2, 
+                  color: 'secondary.main',
+                  fontSize: '0.8rem',
+                  fontWeight: 'bold',
+                  padding: '4px 8px',
+                  bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                  borderRadius: 1
+                }}>
+                  JUST ADDED
+                </Box>
+              )}
+            </Typography>
+            <Typography variant="subtitle2" color="text.secondary">
+              {filteredFlashcards.length} flashcards available
+            </Typography>
+          </Box>
           <Button
             variant="outlined"
             color="primary"
@@ -1123,7 +1326,22 @@ const Flashcards: React.FC = () => {
                     '&:hover': {
                       transform: 'translateY(-4px)',
                       boxShadow: 3
-                    }
+                    },
+                    ...(card.recentlySaved && {
+                      boxShadow: `0 0 0 2px ${theme.palette.secondary.main}`,
+                      position: 'relative',
+                      '&::after': {
+                        content: '""',
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        width: '0',
+                        height: '0',
+                        borderStyle: 'solid',
+                        borderWidth: '0 16px 16px 0',
+                        borderColor: `transparent ${theme.palette.secondary.main} transparent transparent`,
+                      }
+                    })
                   }}
                   onClick={() => {
                     // Find the index of this card in the filtered list
@@ -1263,9 +1481,29 @@ const Flashcards: React.FC = () => {
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <HistoryIcon sx={{ mr: 1 }} />
               Flashcards
+              {highlightTab === 'history' && (
+                <Box 
+                  component="span" 
+                  sx={{ 
+                    ml: 1, 
+                    fontSize: '0.75rem', 
+                    color: 'secondary.main',
+                    fontWeight: 'bold',
+                    animation: 'pulse 1.5s infinite'
+                  }}
+                >
+                  • New!
+                </Box>
+              )}
             </Box>
           }
           value="history"
+          sx={{
+            ...(highlightTab === 'history' && {
+              backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+              transition: 'background-color 0.3s ease'
+            })
+          }}
         />
       </Tabs>
 
@@ -1411,8 +1649,8 @@ const Flashcards: React.FC = () => {
           <Button 
             onClick={() => {
               setAiDialogOpen(false);
-              // Force redirect to dashboard
-              window.location.href = '/';
+              // Remove the redirect to fix loss of data
+              // window.location.href = '/';
             }}
             color="inherit"
             disabled={isGeneratingFromNote}
@@ -1428,10 +1666,7 @@ const Flashcards: React.FC = () => {
         onClose={() => {
           if (!isGeneratingFromNote) {
             setNoteToFlashcardsDialogOpen(false);
-            setSelectedNote(null);
-            setGeneratedFlashcards([]);
-            // Force redirect to dashboard
-            window.location.href = '/';
+            // Don't reset note or flashcards on close
           }
         }}
         fullWidth
@@ -1488,10 +1723,11 @@ const Flashcards: React.FC = () => {
           <Button 
             onClick={() => {
               setNoteToFlashcardsDialogOpen(false);
-              setSelectedNote(null);
-              setGeneratedFlashcards([]);
-              // Force redirect to dashboard
-              window.location.href = '/';
+              // Remove these resets to prevent data loss
+              // setSelectedNote(null);
+              // setGeneratedFlashcards([]);
+              // Remove the redirect to prevent data loss
+              // window.location.href = '/';
             }} 
             color="inherit"
             disabled={isGeneratingFromNote}

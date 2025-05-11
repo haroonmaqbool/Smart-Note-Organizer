@@ -307,6 +307,15 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
   const collapsedWidth = 70;
   const sidebarWidth = sidebarCollapsed ? collapsedWidth : expandedWidth;
 
+  // Add primary button styling
+  const primaryButtonSx = {
+    backgroundColor: '#F47C29', // Orange for buttons
+    color: 'white',
+    '&:hover': {
+      backgroundColor: '#C45A14', // Darker orange for hover
+    }
+  };
+
   const drawer = (
     <Box sx={{ 
       width: '100%', 
@@ -318,73 +327,13 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
       <Box sx={{ 
         display: 'flex', 
         flexDirection: 'column',
-        alignItems: 'center', 
         p: 2,
-        background: `linear-gradient(135deg, ${theme.palette.primary.dark}, ${alpha(theme.palette.primary.main, 0.8)}, ${alpha(theme.palette.secondary.dark, 0.7)})`,
+        background: '#0D1B2A', // Dark blue navy background
         color: 'white',
         position: 'relative',
         overflow: 'hidden',
-        backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'80\' height=\'80\' viewBox=\'0 0 80 80\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.15\'%3E%3Cpath d=\'M50 50c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10s-10-4.477-10-10 4.477-10 10-10zM10 10c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10c0 5.523-4.477 10-10 10S0 25.523 0 20s4.477-10 10-10zm10 8c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8zm40 40c4.418 0 8-3.582 8-8s-3.582-8-8-8-8 3.582-8 8 3.582 8 8 8z\' /%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-        backgroundSize: '80px 80px',
-        backgroundRepeat: 'repeat',
+        // Remove background pattern image
       }}>
-        {/* Remove the top right toggle button since we'll add a centered one */}
-        
-        <Box
-          sx={{
-            width: sidebarCollapsed ? 50 : 70,
-            height: sidebarCollapsed ? 50 : 70,
-            borderRadius: '10px',
-            background: '#FFFFFF', // Solid white background for better contrast
-            mb: 1,
-            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-            position: 'relative',
-            padding: '6px',
-            border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
-            transition: 'all 0.3s ease',
-            cursor: 'pointer' // Add cursor pointer to indicate clickability
-          }}
-          onClick={handleLogoClick} // Add click handler to navigate to dashboard
-        >
-          <img 
-            src="/logo.jpg" 
-            alt="Nest Logo" 
-            style={{ 
-              width: '100%',
-              height: 'auto',
-              objectFit: 'scale-down'
-            }} 
-          />
-        </Box>
-        <Typography 
-          variant="h6" 
-          sx={{ 
-            fontWeight: 600, 
-            display: sidebarCollapsed ? 'none' : 'block',
-            cursor: 'pointer' // Add cursor pointer to indicate clickability
-          }}
-          onClick={handleLogoClick} // Add click handler to navigate to dashboard
-        >
-          Nest
-        </Typography>
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            opacity: 0.8,
-            display: sidebarCollapsed ? 'none' : 'block',
-            textAlign: 'center',
-            fontSize: '0.85rem',
-            fontStyle: 'italic',
-            mt: 0.5,
-            fontWeight: 500
-          }}
-        >
-          Think it. Note it. Own it.
-        </Typography>
       </Box>
       
       <Divider />
@@ -404,16 +353,16 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               borderRadius: 2,
               justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
               '&.Mui-selected': {
-                background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${theme.palette.primary.main})`,
+                background: `linear-gradient(90deg, #C45A14, #F47C29)`, // Orange gradient for selected items
                 color: 'white',
                 boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
                 '&:hover': {
-                  background: `linear-gradient(90deg, ${theme.palette.primary.dark}, ${alpha(theme.palette.primary.main, 0.9)})`,
+                  background: `linear-gradient(90deg, #C45A14, #F47C29)`,
                   opacity: 0.95,
                 }
               },
               '&:hover': {
-                backgroundColor: `${theme.palette.primary.light}22`,
+                backgroundColor: 'rgba(244, 124, 41, 0.15)', // Orange hover effect
                 transform: sidebarCollapsed ? 'scale(1.1)' : 'translateX(5px)',
                 transition: 'all 0.3s ease-in-out'
               },
@@ -422,7 +371,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
           >
             <Tooltip title={sidebarCollapsed ? item.text : ""} placement="right">
               <ListItemIcon sx={{ 
-                color: isActive(item.path) ? 'white' : theme.palette.primary.main,
+                color: isActive(item.path) ? 'white' : '#F47C29', // Orange for inactive icons
                 minWidth: sidebarCollapsed ? 0 : 40,
                 mr: sidebarCollapsed ? 0 : 2,
                 justifyContent: 'center'
@@ -526,7 +475,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
           autoHideDuration={4000}
           onClose={handleNotificationClose}
           sx={{
-            mt: 8, // To position below the app bar
+            mt: 7, // Reduced from 8 to remove extra space
             '& .MuiAlert-root': {
               minWidth: '250px',
               boxShadow: 'none', // Remove shadow that might cause performance issues
@@ -579,12 +528,11 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
         
         <AppBar position="fixed" color="primary" elevation={0} sx={{ 
           zIndex: theme.zIndex.drawer + 1,
-          backgroundColor: alpha(theme.palette.background.paper, 0.9),
-          color: theme.palette.text.primary,
-          background: `linear-gradient(90deg, ${alpha(theme.palette.background.paper, 0.8)}, ${alpha(theme.palette.background.default, 0.8)})`,
-          backdropFilter: 'blur(10px)',
+          backgroundColor: '#0D1B2A', // Dark blue navy background
+          color: 'white',
+          background: '#0D1B2A',
           boxShadow: '0 4px 20px rgba(0, 0, 0, 0.25)',
-          borderBottom: `1px solid ${alpha(theme.palette.primary.main, 0.2)}`
+          borderBottom: `1px solid rgba(196, 90, 20, 0.2)` // Orange accent
         }}>
           <Toolbar>
             {isMobile && (
@@ -609,23 +557,21 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
             >
               <Box
                 sx={{ 
-                  background: '#FFFFFF', // Solid white background for better contrast
-                  width: 40, 
-                  height: 40,
+                  background: 'transparent',
+                  width: 56,  // Increased from 48
+                  height: 56, // Increased from 48
                   borderRadius: '8px',
-                  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   overflow: 'hidden',
                   position: 'relative',
-                  padding: '4px',
-                  border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`
+                  padding: '4px'
                 }}
               >
                 <img 
-                  src="/logo.jpg" 
-                  alt="Nest Logo" 
+                  src="/Logo.jpg" 
+                  alt="NoteNest Logo" 
                   style={{ 
                     width: '100%',
                     height: 'auto',
@@ -638,13 +584,24 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 component="h1" 
                 sx={{ 
                   fontWeight: 700, 
-                  background: `linear-gradient(90deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  display: { xs: 'none', sm: 'block' }
+                  display: { xs: 'none', sm: 'flex' },
+                  alignItems: 'center',
+                  gap: 1
                 }}
               >
-                Nest
+                <span style={{
+                  color: '#F47C29' // Orange for NoteNest text
+                }}>
+                  NoteNest
+                </span>
+                <span style={{
+                  color: 'white', // White for slogan
+                  fontSize: '0.8em',
+                  opacity: 0.9,
+                  fontWeight: 400
+                }}>
+                  – Think it. Note it. Own it.
+                </span>
               </Typography>
             </Box>
             
@@ -768,7 +725,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 ) : (
                   <List sx={{ p: 0 }}>
                     {notifications.map((notif) => {
-                      const isRecent = new Date().getTime() - notif.timestamp.getTime() < 1000 * 60 * 60; // Less than an hour old
+                      const isRecent = new Date().getTime() - (new Date(notif.timestamp)).getTime() < 1000 * 60 * 60; // Less than an hour old
                       
                       // Determine the icon based on notification category
                       let icon;
@@ -1021,9 +978,9 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                   [`& .MuiDrawer-paper`]: { 
                     width: sidebarWidth, 
                     boxSizing: 'border-box',
-                    borderRight: `1px solid ${theme.palette.divider}`,
+                    borderRight: `1px solid #0D1B2A`,
                     boxShadow: 'none',
-                    background: `linear-gradient(180deg, ${alpha(theme.palette.primary.light, 0.05)} 0%, ${alpha(theme.palette.background.default, 1)} 100%)`,
+                    background: '#0D1B2A', // Dark blue navy background
                     overflowX: 'hidden',
                     transition: 'width 0.3s ease'
                   },
@@ -1126,10 +1083,8 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               marginTop: "64px", // Height of AppBar
               backgroundColor: 'transparent',
               position: 'relative',
-              backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'80\' height=\'80\' viewBox=\'0 0 80 80\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%2360A5FA\' fill-opacity=\'0.12\'%3E%3Cpath d=\'M24.8 30.2c-5.3-5.3-5.3-13.9 0-19.2 5.3-5.3 13.9-5.3 19.2 0 5.3 5.3 5.3 13.9 0 19.2l-9.6 9.6-9.6-9.6zm40 40c-5.3-5.3-5.3-13.9 0-19.2 5.3-5.3 13.9-5.3 19.2 0 5.3 5.3 5.3 13.9 0 19.2l-9.6 9.6-9.6-9.6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")',
-              backgroundPosition: 'center top',
-              backgroundRepeat: 'repeat',
-              backgroundSize: '80px 80px',
+              background: '#0D1B2A', // Dark blue navy background
+              backgroundImage: 'none', // Remove pattern
               transition: 'width 0.3s ease',
               '&::after': {
                 content: '""',
@@ -1138,7 +1093,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                 left: 0,
                 right: 0,
                 height: '240px',
-                background: `linear-gradient(135deg, ${alpha(theme.palette.primary.dark, 0.2)}, ${alpha(theme.palette.secondary.dark, 0.15)})`,
+                background: `linear-gradient(135deg, rgba(196, 90, 20, 0.15), rgba(244, 124, 41, 0.1))`, // Orange accent gradient
                 zIndex: -1,
                 borderRadius: '0 0 30px 30px',
               }
@@ -1208,7 +1163,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
                   WebkitTextFillColor: 'transparent',
                   display: 'inline-block'
                 }}>
-                  Nest
+                  NoteNest
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
                   Think it. Note it. Own it.
@@ -1217,7 +1172,7 @@ const Layout: React.FC<LayoutProps> = ({ children, toggleThemeMode, themeMode })
               
               <Box>
                 <Typography variant="caption" color="text.secondary">
-                  © {new Date().getFullYear()} Nest. All rights reserved.
+                  © {new Date().getFullYear()} NoteNest. All rights reserved.
                 </Typography>
               </Box>
             </Box>

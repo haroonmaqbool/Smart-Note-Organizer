@@ -154,14 +154,19 @@ const NoteEditor: React.FC = () => {
     
     try {
       setIsTaggingLoading(true);
-      showSnackbarMessage('Analyzing content with AI model...', 'info');
+      showSnackbarMessage('Analyzing content...', 'info');
+      console.log('Initiating tag generation for text length:', text.length);
+      
       const response = await api.tag(text, aiModel);
       
       if (response.data?.tags) {
         // Check what model was used
         const modelUsed = response.data.model_used || 'unknown';
-        const isOpenRouter = modelUsed.includes('openrouter') || modelUsed.includes('llama3');
-        const isFallback = modelUsed === 'client-side-fallback';
+        const isAI = modelUsed.includes('openrouter') || modelUsed.includes('llama3');
+        const isBackend = modelUsed.includes('backend');
+        const isFallback = modelUsed.includes('fallback');
+        
+        console.log(`Tags generated using model: ${modelUsed}`);
         
         // Filter out tags that are too short or already included
         const newTags = response.data.tags
@@ -177,37 +182,46 @@ const NoteEditor: React.FC = () => {
           setTags(prevTags => [...new Set([...prevTags, ...newTags])]);
           
           // Show appropriate message based on what model was used
-          if (isOpenRouter) {
-            showSnackbarMessage('Tags generated using AI', 'success');
+          if (isAI) {
+            showSnackbarMessage('Tags generated with AI model', 'success');
+          } else if (isBackend) {
+            showSnackbarMessage('Tags generated using server processing', 'success');
           } else if (isFallback) {
-            showSnackbarMessage('Tags generated using local processing (server unavailable)', 'success');
+            showSnackbarMessage('Tags generated using fallback processing (AI unavailable)', 'info');
           } else {
-            showSnackbarMessage('Tags automatically generated!', 'success');
+            showSnackbarMessage('Tags generated successfully!', 'success');
           }
+          
+          console.log('Added new tags:', newTags);
         } else {
-          showSnackbarMessage('No new tags could be generated', 'info');
+          showSnackbarMessage('No new relevant tags could be identified', 'info');
+          console.log('No new tags were added - tags were filtered out or already existed');
         }
       } else if (response.error) {
+        console.error('Tag generation API error:', response.error);
+        
         // Try a simplified extraction directly from the text as a last resort
         const simpleTags = extractSimpleTags(text);
         
         if (simpleTags.length > 0) {
           setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
-          showSnackbarMessage('Tags generated using fallback extraction method', 'warning');
+          showSnackbarMessage('Tags generated using emergency fallback method', 'warning');
+          console.log('Used emergency fallback tag generation method:', simpleTags);
         } else {
-          showSnackbarMessage(`Error generating tags: ${response.error}`, 'error');
+          showSnackbarMessage(`Failed to generate tags: ${response.error}`, 'error');
         }
       }
     } catch (error) {
-      console.error('Error generating tags:', error);
+      console.error('Error in tag generation process:', error);
       
       // Last resort - try to extract something
       const simpleTags = extractSimpleTags(text);
       if (simpleTags.length > 0) {
         setTags(prevTags => [...new Set([...prevTags, ...simpleTags])]);
-        showSnackbarMessage('Tags generated using fallback extraction method', 'warning');
+        showSnackbarMessage('Tags generated using emergency fallback method', 'warning');
+        console.log('Used emergency fallback tag generation after error:', simpleTags);
       } else {
-        showSnackbarMessage('Failed to generate tags - please try again later', 'error');
+        showSnackbarMessage('All tag generation methods failed - please try again later', 'error');
       }
     } finally {
       setIsTaggingLoading(false);
@@ -433,27 +447,27 @@ const NoteEditor: React.FC = () => {
         // Show success message
         showSnackbarMessage('Note updated successfully!', 'success', false);
       } else {
-        // Create new note object
-        const note = {
-          id: uuidv4(),
+        // Create new note object (without id, createdAt, updatedAt)
+        const noteInput = {
           title,
           content,
           tags,
           summary,
-          createdAt: new Date(),
-          updatedAt: new Date(),
         };
-        
-        // Save to state context
-        dispatch({ type: 'ADD_NOTE', payload: note });
-        
+        // Save to backend and only add to state if backend succeeds
+        const response = await api.createNote(noteInput);
+        if (response.error || !response.data) {
+          showSnackbarMessage('Error saving note to backend', 'error');
+          setIsLoading(false);
+          return;
+        }
+        // Add backend note to state
+        dispatch({ type: 'ADD_NOTE', payload: response.data });
         // Show success message with the global notification system
         showNotification('created successfully', 'success', 'note', title);
-        
         // Also show the local snackbar for other UI feedback
         showSnackbarMessage('Note saved successfully!', 'success', false);
       }
-      
       // Use React Router's navigate instead of window.location
       setTimeout(() => {
         navigate('/');
@@ -491,10 +505,12 @@ const NoteEditor: React.FC = () => {
   };
 
   const handleContentChange = (html: string) => {
-    console.log('NoteEditor received content update:', html.substring(0, 50) + '...');
+    console.log('NoteEditor received content update');
     setContent(html);
     
-    // Remove automatic tag generation when content changes
+    // We're not triggering automatic tag generation on every content change
+    // as that would cause too many API calls and potential rate limiting.
+    // Instead, we have a dedicated button for generating tags when the user is ready.
   };
 
   return (
@@ -726,12 +742,15 @@ const NoteEditor: React.FC = () => {
                   showSnackbarMessage('Please add more content before generating tags', 'info');
                   return;
                 }
+                // Log that we're starting AI tag generation
+                console.log('Starting AI tag generation process...');
+                showSnackbarMessage('Starting AI tag generation...', 'info');
                 autoGenerateTags(content);
               }}
               disabled={isTaggingLoading || content.length < 50}
               sx={{ ml: 1 }}
             >
-              {isTaggingLoading ? 'Generating...' : 'AI-Generate Tags'}
+              {isTaggingLoading ? 'Generating...' : 'Generate Smart Tags'}
             </Button>
           </Box>
           

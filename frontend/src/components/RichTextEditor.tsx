@@ -183,7 +183,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const documentInputRef = useRef<HTMLInputElement>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
-  
+  const shouldForceCaretToEndRef = useRef(false);
+
   const [activeFormats, setActiveFormats] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -224,6 +225,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       while (tempDiv.firstChild) {
         editorRef.current.appendChild(tempDiv.firstChild);
       }
+      shouldForceCaretToEndRef.current = true
       editorContentRef.current = initialContent;
       // Update empty state
       setIsEditorEmpty(editorRef.current.innerHTML.trim() === '');
@@ -243,6 +245,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       }
     }
   }, [initialContent]);
+
+  // Enforce LTR text direction and other editor settings
+  useEffect(() => {
+    if (editorRef.current) {
+      // Apply forced LTR direction to the editable div
+      editorRef.current.style.direction = 'ltr';
+      editorRef.current.style.unicodeBidi = 'bidi-override';
+      editorRef.current.setAttribute('dir', 'ltr');
+      
+      // Handle focus events for proper selection and caret positioning
+      const handleFocus = () => {
+        // Ensure LTR direction is maintained on focus
+        if (editorRef.current) {
+          editorRef.current.style.direction = 'ltr';
+          editorRef.current.style.unicodeBidi = 'bidi-override';
+        }
+      };
+      
+      editorRef.current.addEventListener('focus', handleFocus);
+      return () => {
+        editorRef.current?.removeEventListener('focus', handleFocus);
+      };
+    }
+  }, []);
 
   // Track selection changes to update format buttons
   useEffect(() => {
@@ -289,14 +315,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const handleContentChange = () => {
     if (editorRef.current) {
       editorContentRef.current = editorRef.current.innerHTML;
-      // Call onChange immediately when content changes to update parent component
-      console.log('Content changed to:', editorRef.current.innerHTML);
       onChange(editorRef.current.innerHTML);
-      
-      // Check if editor is empty and update state
       setIsEditorEmpty(editorRef.current.innerHTML.trim() === '');
+  
+      // Move caret to end ONLY if we flagged it
+      if (shouldForceCaretToEndRef.current) {
+        const sel = window.getSelection();
+        if (sel && editorRef.current) {
+          sel.selectAllChildren(editorRef.current);
+          sel.collapseToEnd();
+        }
+        shouldForceCaretToEndRef.current = false;
+      }
     }
   };
+  
 
   // Call onChange only on blur (or you can debounce if you want live updates)
   const handleBlur = () => {
@@ -409,8 +442,43 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     setHeadingMenuAnchor(null);
   };
 
-  // Handle keyboard shortcuts
+  // Handle keyboard shortcuts and key behavior
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Fix for backspace behavior
+    if (e.key === 'Backspace') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        
+        // If at the beginning of the editor or when nothing is selected, do nothing special
+        if (range.startOffset === 0 && range.collapsed && 
+            (!range.startContainer.previousSibling && 
+             range.startContainer === editorRef.current?.firstChild)) {
+          return; // Normal behavior at beginning of editor
+        }
+
+        // If text is selected, default behavior is fine (will delete selection)
+        if (!range.collapsed) {
+          return; // Let default behavior handle deleting selected text
+        }
+
+        // Prevent default backspace and handle manually for better RTL compatibility
+        e.preventDefault();
+        
+        // Create a new range that selects the character before the cursor
+        const backspaceRange = range.cloneRange();
+        backspaceRange.setStart(range.startContainer, Math.max(0, range.startOffset - 1));
+        backspaceRange.setEnd(range.startContainer, range.startOffset);
+        
+        // Delete the character
+        backspaceRange.deleteContents();
+        
+        // Update content
+        handleContentChange();
+        return;
+      }
+    }
+    
     // Handle tab key to indent
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -574,18 +642,22 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         // Format the text appropriately based on content type
         let formattedText = previewText;
         if (!containsHtmlTags) {
-          // Clean and format plain text
           formattedText = previewText
             .split('\n\n')
             .map(paragraph => {
-              // Skip empty paragraphs
               if (!paragraph.trim()) return '';
-              // Replace single newlines with line breaks
-              return `<p>${paragraph.replace(/\n/g, '<br>')}</p>`
+              return `<p>${paragraph.replace(/\n/g, '<br>')}</p>`;
             })
-            .filter(p => p) // Remove empty paragraphs
+            .filter(p => p)
             .join('');
         }
+        
+        // ✅ Wrap entire formatted text in LTR container
+        formattedText = `<div dir="ltr" style="direction: ltr; unicode-bidi: bidi-override; text-align: left;">${formattedText}</div>`;
+        
+        // ✅ Optional: remove any unexpected RTL in case it's present
+        formattedText = formattedText.replace(/dir=["']?rtl["']?/gi, 'dir="ltr"');
+        
         
         // If still no content after formatting, add a paragraph
         if (!formattedText.trim()) {
@@ -626,7 +698,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         
         // Force the editor to update
         editorRef.current.focus();
-        
+
+        shouldForceCaretToEndRef.current = true
         // Explicitly call the content change handler
         handleContentChange();
         
@@ -692,8 +765,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         } else {
           // Append to end
           editorRef.current.innerHTML += imgHtml;
+          
         }
-        
+        shouldForceCaretToEndRef.current = true;
+
         handleContentChange();
       }
     };
@@ -757,7 +832,8 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         pre.appendChild(code);
         range.insertNode(pre);
       }
-      
+      shouldForceCaretToEndRef.current = true;
+
       handleContentChange();
     }
   };
@@ -1488,14 +1564,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         onKeyDown={handleKeyDown}
         onBlur={handleBlur}
         className="rich-text-editor-content"
+        dir="ltr"
         style={{
           direction: 'ltr',
+          unicodeBidi: 'bidi-override',
           minHeight: minHeight,
           outline: 'none',
           overflowY: 'auto',
           flex: 1,
           padding: 16,
           position: 'relative',
+          textAlign: 'left',
         }}
         data-placeholder={placeholder}
       />

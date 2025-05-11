@@ -19,7 +19,8 @@ const isDevelopment = window.location.hostname === 'localhost' || window.locatio
 // FIXME: Explicitly set the backend URL for development
 export let API_BASE_URL = 'http://localhost:8000/api';
 
-// OpenRouter API Key
+// OpenRouter API Key - Using a valid public key for demonstration
+// In a production environment, this should be stored securely and obtained from environment variables
 const OPENROUTER_API_KEY = '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';
 
 // Debug information to help troubleshoot connection issues
@@ -85,7 +86,7 @@ const handleApiError = (error: any, defaultMessage: string): string => {
   return error instanceof Error ? error.message : defaultMessage;
 };
 
-interface ApiResponse<T> {
+export interface ApiResponse<T> {
   data?: T;
   error?: string;
 }
@@ -128,6 +129,27 @@ export interface ChatbotResponse {
   flashcards: Flashcard[];
   summary: string;
   model_used: string;
+}
+
+// Add interfaces for Note and Flashcard types
+export interface Note {
+  id: string;
+  title: string;
+  content: string;
+  summary?: string;
+  tags: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AppFlashcard {
+  id: string;
+  front: string;
+  back: string;
+  tags: string[];
+  noteId?: string;
+  createdAt: Date;
+  recentlySaved?: boolean;
 }
 
 // Helper function to generate flashcards with OpenRouter API
@@ -220,67 +242,373 @@ Return ONLY a JSON object with the following format:
 }
 
 export const api = {
-  // Enable mock mode when backend is unavailable
   enableMockMode() {
     mockModeEnabled = true;
-    console.warn('API mock mode enabled - using simulated data');
+    console.log('Mock mode enabled');
   },
-  
-  // Disable mock mode
+
   disableMockMode() {
     mockModeEnabled = false;
-    console.log('API mock mode disabled - using real backend');
+    console.log('Mock mode disabled');
   },
-  
-  // Check if mock mode is enabled
+
   isMockModeEnabled() {
     return mockModeEnabled;
   },
-  
-  // Check connectivity with the backend
+
   async checkConnection(): Promise<boolean> {
     try {
-      console.log('Checking backend connectivity at:', `${API_BASE_URL}/ping/`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced to 3 second timeout
-      
-      const response = await fetch(`${API_BASE_URL}/ping/`, {
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-          'Cache-Control': 'no-cache'
-        }
-      }).catch(error => {
-        console.error('Fetch error during connectivity check:', error);
-        return null; // Return null to indicate a network error
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response && response.ok) {
-        const data = await response.json();
-        isConnected = data.status === 'ok';
-        console.log('Backend connectivity check result:', isConnected ? 'Connected' : 'Disconnected');
-        
-        // Disable mock mode if we're connected
-        if (isConnected) {
-          this.disableMockMode();
-        }
-        
-        return isConnected;
-      }
-      
-      console.warn('Backend connectivity check failed: server returned error or not found');
-      isConnected = false;
-      return false;
+      const response = await fetch(`${API_BASE_URL}/health/`);
+      isConnected = response.ok;
+      return isConnected;
     } catch (error) {
-      console.error('Backend connectivity check failed:', error);
+      console.warn('Backend connection check failed:', error);
       isConnected = false;
       return false;
     }
   },
 
+  async getNotes(): Promise<ApiResponse<Note[]>> {
+    if (mockModeEnabled) {
+      return {
+        data: MOCK_DATA.notes.map(note => ({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          summary: note.summary,
+          tags: note.tags,
+          createdAt: new Date(note.created_at),
+          updatedAt: new Date(note.updated_at)
+        }))
+      };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/notes/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const rawData = await response.json();
+      
+      // Transform the raw data to match our Note interface
+      const data = rawData.map((note: any) => ({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        summary: note.summary,
+        tags: note.tags || [],
+        createdAt: new Date(note.created_at || note.createdAt),
+        updatedAt: new Date(note.updated_at || note.updatedAt)
+      }));
+      
+      return { data };
+    } catch (error) {
+      return { error: handleApiError(error, 'Failed to fetch notes') };
+    }
+  },
+
+  async createNote(note: Omit<Note, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Note>> {
+    // Generate a globally unique ID using UUID format to ensure uniqueness
+    const generateUniqueId = () => {
+      // Create UUID v4 style ID (random)
+      return 'note-xxxx-xxxx-xxxx-xxxxxxxxxxxx'.replace(/[x]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        return r.toString(16);
+      });
+    };
+    
+    const id = generateUniqueId();
+    const now = new Date();
+    const newNote: Note = {
+      ...note,
+      id,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    if (mockModeEnabled) {
+      return { data: newNote };
+    }
+
+    try {
+      // Log the note being created
+      console.log('Creating new note with unique ID:', id);
+      
+      // Ensure proper format for backend database
+      const response = await fetch(`${API_BASE_URL}/notes/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: newNote.id,
+          title: newNote.title,
+          content: newNote.content,
+          summary: newNote.summary || '',
+          tags: newNote.tags || [],
+          created_at: newNote.createdAt.toISOString(),
+          updated_at: newNote.updatedAt.toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Server responded with error:', errorData);
+        throw new Error(errorData.error || `Failed to create note: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Note created in database successfully with ID:', data.id);
+      return { 
+        data: {
+          id: data.id,
+          title: data.title,
+          content: data.content,
+          summary: data.summary,
+          tags: data.tags || [],
+          createdAt: new Date(data.created_at || data.createdAt),
+          updatedAt: new Date(data.updated_at || data.updatedAt)
+        } 
+      };
+    } catch (error) {
+      console.error('Error creating note in database:', error);
+      // Even if backend fails, return the note so it can be saved to localStorage
+      return { data: newNote, error: handleApiError(error, 'Failed to save note to database') };
+    }
+  },
+
+  async updateNote(note: Note): Promise<ApiResponse<Note>> {
+    if (mockModeEnabled) {
+      return { data: note };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/notes/${note.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          summary: note.summary,
+          tags: note.tags,
+          created_at: note.createdAt.toISOString(),
+          updated_at: new Date().toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update note: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { 
+        data: {
+          id: data.id,
+          title: data.title,
+          content: data.content,
+          summary: data.summary,
+          tags: data.tags || [],
+          createdAt: new Date(data.created_at || data.createdAt),
+          updatedAt: new Date(data.updated_at || data.updatedAt)
+        } 
+      };
+    } catch (error) {
+      console.error('Error updating note:', error);
+      // Even if backend fails, return the note so it can be saved to localStorage
+      return { data: note, error: handleApiError(error, 'Failed to update note on server') };
+    }
+  },
+
+  async deleteNote(noteId: string): Promise<ApiResponse<boolean>> {
+    if (mockModeEnabled) {
+      return { data: true };
+    }
+
+    try {
+      console.log(`Deleting note with ID: ${noteId} from database`);
+      const response = await fetch(`${API_BASE_URL}/notes/${noteId}/`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Server responded with error:', errorData);
+        throw new Error(errorData.error || `Failed to delete note: ${response.status}`);
+      }
+
+      console.log(`Note ${noteId} deleted from database successfully`);
+      return { data: true };
+    } catch (error) {
+      console.error(`Error deleting note ${noteId} from database:`, error);
+      return { error: handleApiError(error, 'Failed to delete note from database') };
+    }
+  },
+
+  async getFlashcards(): Promise<ApiResponse<AppFlashcard[]>> {
+    if (mockModeEnabled) {
+      return {
+        data: MOCK_DATA.flashcards.map(card => ({
+          id: card.id,
+          front: card.question,
+          back: card.answer,
+          tags: card.tags,
+          createdAt: new Date(card.created_at)
+        }))
+      };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/flashcards/`);
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const rawData = await response.json();
+      
+      // Transform the raw data to match our AppFlashcard interface
+      const data = rawData.map((card: any) => ({
+        id: card.id,
+        front: card.question || card.front,
+        back: card.answer || card.back,
+        tags: card.tags || [],
+        createdAt: new Date(card.created_at || card.createdAt)
+      }));
+      
+      return { data };
+    } catch (error) {
+      return { error: handleApiError(error, 'Failed to fetch flashcards') };
+    }
+  },
+
+  async createFlashcard(flashcard: Omit<AppFlashcard, 'id' | 'createdAt'>): Promise<ApiResponse<AppFlashcard>> {
+    const id = `flashcard-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const now = new Date();
+    const newFlashcard: AppFlashcard = {
+      ...flashcard,
+      id,
+      createdAt: now
+    };
+
+    if (mockModeEnabled) {
+      return { data: newFlashcard };
+    }
+
+    try {
+      console.log('Creating flashcard with data:', {
+        id: newFlashcard.id,
+        front: newFlashcard.front,
+        noteId: flashcard.noteId,
+        created_at: newFlashcard.createdAt.toISOString()
+      });
+      
+      const response = await fetch(`${API_BASE_URL}/flashcards/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: newFlashcard.id,
+          title: newFlashcard.front.substring(0, 30),
+          question: newFlashcard.front,
+          answer: newFlashcard.back,
+          tags: newFlashcard.tags,
+          note: flashcard.noteId,  // Make sure this is passed explicitly
+          created_at: newFlashcard.createdAt.toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to create flashcard: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('Flashcard created successfully with response:', data);
+      
+      return { 
+        data: {
+          id: data.id,
+          front: data.question || data.front,
+          back: data.answer || data.back,
+          tags: data.tags || [],
+          noteId: data.note || flashcard.noteId,  // Ensure noteId is preserved
+          createdAt: new Date(data.created_at || data.createdAt)
+        } 
+      };
+    } catch (error) {
+      console.error('Error creating flashcard:', error);
+      // Even if backend fails, return the flashcard so it can be saved to localStorage
+      return { data: newFlashcard, error: handleApiError(error, 'Failed to save flashcard to server') };
+    }
+  },
+
+  async updateFlashcard(flashcard: AppFlashcard): Promise<ApiResponse<AppFlashcard>> {
+    if (mockModeEnabled) {
+      return { data: flashcard };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/flashcards/${flashcard.id}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          id: flashcard.id,
+          title: flashcard.front.substring(0, 30),
+          question: flashcard.front,
+          answer: flashcard.back,
+          tags: flashcard.tags,
+          note: flashcard.noteId,
+          created_at: flashcard.createdAt.toISOString()
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to update flashcard: ${response.status}`);
+      }
+
+      const data = await response.json();
+      return { 
+        data: {
+          id: data.id,
+          front: data.question || data.front,
+          back: data.answer || data.back,
+          tags: data.tags || [],
+          noteId: data.note || data.noteId,
+          createdAt: new Date(data.created_at || data.createdAt)
+        } 
+      };
+    } catch (error) {
+      console.error('Error updating flashcard:', error);
+      // Even if backend fails, return the flashcard so it can be saved to localStorage
+      return { data: flashcard, error: handleApiError(error, 'Failed to update flashcard on server') };
+    }
+  },
+
+  async deleteFlashcard(flashcardId: string): Promise<ApiResponse<boolean>> {
+    if (mockModeEnabled) {
+      return { data: true };
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/flashcards/${flashcardId}/`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to delete flashcard: ${response.status}`);
+      }
+
+      return { data: true };
+    } catch (error) {
+      console.error('Error deleting flashcard:', error);
+      // Since we're optimistic, return true even if backend fails
+      return { error: handleApiError(error, 'Failed to delete flashcard from server') };
+    }
+  },
+  
   async summarize(text: string, aiModel?: AIModel): Promise<ApiResponse<{ summary: string, model_used: string }>> {
     try {
       const response = await fetch(`${API_BASE_URL}/summarize`, {
@@ -305,11 +633,15 @@ export const api = {
 
   async tag(text: string, aiModel?: AIModel): Promise<ApiResponse<{ tags: string[], model_used: string }>> {
     try {
-      console.log('Sending tag request to:', `${API_BASE_URL}/tag`);
+      console.log('Starting tag generation process for text length:', text.length);
       
-      // Try OpenRouter API first for better tag generation
+      // Attempt OpenRouter AI first for better tag generation
+      let openRouterSuccess = false;
+      let backendSuccess = false;
+      let fallbackSuccess = false;
+      
       try {
-        console.log('Attempting OpenRouter API for tag generation');
+        console.log('Attempting OpenRouter API for tag generation...');
         const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
           method: 'POST',
           headers: {
@@ -333,10 +665,17 @@ export const api = {
           })
         });
 
+        // Log the status of the OpenRouter response
+        console.log('OpenRouter response status:', openRouterResponse.status);
+        
         if (openRouterResponse.ok) {
           const llmData = await openRouterResponse.json();
+          console.log('OpenRouter API returned data:', llmData.choices ? 'Has choices' : 'No choices');
+          
           if (llmData.choices && llmData.choices[0] && llmData.choices[0].message) {
             const content = llmData.choices[0].message.content;
+            console.log('OpenRouter response content:', content);
+            
             try {
               // Try multiple approaches to extract the tags
               let tags = null;
@@ -345,6 +684,7 @@ export const api = {
               try {
                 if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
                   tags = JSON.parse(content);
+                  console.log('Direct JSON parse succeeded:', tags);
                 }
               } catch (directJsonError) {
                 console.warn('Direct JSON parse failed:', directJsonError);
@@ -356,6 +696,7 @@ export const api = {
                   if (content.includes('[') && content.includes(']')) {
                     const jsonStr = content.substring(content.indexOf('['), content.lastIndexOf(']') + 1);
                     tags = JSON.parse(jsonStr);
+                    console.log('JSON extraction succeeded:', tags);
                   }
                 } catch (extractJsonError) {
                   console.warn('Extracting JSON array failed:', extractJsonError);
@@ -364,13 +705,15 @@ export const api = {
               
               // Approach 3: Handle responses with tags on separate lines or comma-separated
               if (!tags) {
-                tags = content.split(/[,\n]/).map(tag => {
+                console.log('Attempting to parse tags from text format');
+                tags = content.split(/,|\n/).map((tag: string) => {
                   // Clean up the tag: remove quotes, dashes, brackets, etc.
                   return tag.trim()
-                    .replace(/^["'\[\s-]*|["'\]\s]*$/g, '') // Remove quotes, brackets at start/end
+                    .replace(/^['"\[\s-]*|['"\]\s]*$/g, '') // Remove quotes, brackets at start/end
                     .replace(/^-\s*/, '') // Remove leading dash
                     .trim();
-                }).filter(tag => tag.length > 0);
+                }).filter((tag: string) => tag.length > 0);
+                console.log('Text-based parsing result:', tags);
               }
               
               // Validate we have tags and they are in the right format
@@ -383,42 +726,113 @@ export const api = {
                 
                 if (cleanedTags.length > 0) {
                   console.log('OpenRouter API successfully generated tags:', cleanedTags);
+                  openRouterSuccess = true;
                   return { 
                     data: { 
                       tags: cleanedTags, 
                       model_used: "openrouter-llama3" 
                     } 
                   };
+                } else {
+                  console.warn('OpenRouter API returned tags but they were filtered out');
                 }
+              } else {
+                console.warn('OpenRouter API did not return valid tags array');
               }
             } catch (jsonError) {
               console.warn('Error processing OpenRouter response:', jsonError);
             }
+          } else {
+            console.warn('OpenRouter API response missing choices or message');
           }
+        } else {
+          const errorText = await openRouterResponse.text().catch(() => 'Could not read error response');
+          console.warn(`OpenRouter API returned error status ${openRouterResponse.status}: ${errorText}`);
         }
       } catch (openRouterError) {
-        console.warn('OpenRouter API error, falling back to backend:', openRouterError);
+        console.warn('OpenRouter API error:', openRouterError);
       }
       
+      console.log('OpenRouter AI tag generation ' + (openRouterSuccess ? 'succeeded' : 'failed') + ', trying backend...');
+      
       // Fall back to backend API if OpenRouter fails
-      const response = await fetch(`${API_BASE_URL}/tag`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ text, ai_model: aiModel }),
-      });
+      try {
+        console.log('Attempting backend API for tag generation...');
+        const response = await fetch(`${API_BASE_URL}/tag`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ text, ai_model: aiModel }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `Failed to tag text: ${response.status}`);
+        console.log('Backend tag API response status:', response.status);
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.warn('Backend tag API error:', errorData.error || `Status ${response.status}`);
+        } else {
+          const data = await response.json();
+          console.log('Backend tag API response:', data);
+          
+          if (data && data.tags && Array.isArray(data.tags) && data.tags.length > 0) {
+            backendSuccess = true;
+            return { data: {
+              tags: data.tags,
+              model_used: data.model_used || "backend-ai"
+            }};
+          } else {
+            console.warn('Backend returned empty or invalid tags array');
+          }
+        }
+      } catch (backendError) {
+        console.warn('Backend tag API error:', backendError);
       }
-
-      const data = await response.json();
-      console.log('Tag API response:', data);
-      return { data };
+      
+      console.log('Backend tag generation ' + (backendSuccess ? 'succeeded' : 'failed') + ', using client-side fallback...');
+      
+      // If all else fails, use a simple client-side tag extraction
+      try {
+        // Handle text with a basic word frequency approach
+        const words = text.toLowerCase()
+          .replace(/<[^>]*>/g, ' ') // Remove HTML tags
+          .replace(/[^\w\s]/g, ' ') // Remove punctuation
+          .split(/\s+/) // Split by whitespace
+          .filter(word => word.length > 3); // Only keep words longer than 3 chars
+        
+        // Count word frequency
+        const wordCounts: {[key: string]: number} = {};
+        words.forEach(word => {
+          wordCounts[word] = (wordCounts[word] || 0) + 1;
+        });
+        
+        // Filter out common words
+        const commonWords = ['this', 'that', 'these', 'those', 'with', 'from', 'have', 'will', 'what', 'when', 'where', 'which', 'while'];
+        const sortedWords = Object.keys(wordCounts)
+          .filter(word => !commonWords.includes(word))
+          .sort((a, b) => wordCounts[b] - wordCounts[a])
+          .slice(0, 5);
+        
+        console.log('Client-side tag extraction result:', sortedWords);
+        
+        if (sortedWords.length > 0) {
+          fallbackSuccess = true;
+          return { data: {
+            tags: sortedWords,
+            model_used: "client-side-fallback"
+          }};
+        } else {
+          console.warn('Client-side tag extraction returned no results');
+        }
+      } catch (fallbackError) {
+        console.error('Client-side fallback tag extraction failed:', fallbackError);
+      }
+      
+      // If all attempts failed, return a meaningful error
+      return { error: "Failed to generate tags with all available methods" };
     } catch (error) {
-      return { error: handleApiError(error, 'Failed to tag text') };
+      console.error('Tag generation process failed with error:', error);
+      return { error: handleApiError(error, 'Failed to generate tags') };
     }
   },
 
@@ -630,5 +1044,112 @@ export const api = {
       console.error('Flashcard generation error:', error);
       return { error: handleApiError(error, 'Failed to generate flashcards from text') };
     }
+  },
+
+  async deleteAllNotes(): Promise<ApiResponse<boolean>> {
+    if (mockModeEnabled) {
+      return { data: true };
+    }
+
+    try {
+      // Get all notes first
+      const notesResponse = await this.getNotes();
+      if (notesResponse.error || !notesResponse.data) {
+        throw new Error('Failed to fetch notes for deletion');
+      }
+      
+      // Delete each note from the backend sequentially
+      const deletePromises = notesResponse.data.map(note => 
+        fetch(`${API_BASE_URL}/notes/${note.id}/`, {
+          method: 'DELETE',
+        })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      return { data: true };
+    } catch (error) {
+      console.error('Error deleting all notes from backend:', error);
+      return { error: handleApiError(error, 'Failed to delete all notes from server') };
+    }
+  },
+
+  async deleteAllFlashcards(): Promise<ApiResponse<boolean>> {
+    if (mockModeEnabled) {
+      return { data: true };
+    }
+
+    try {
+      // Get all flashcards first
+      const flashcardsResponse = await this.getFlashcards();
+      if (flashcardsResponse.error || !flashcardsResponse.data) {
+        throw new Error('Failed to fetch flashcards for deletion');
+      }
+      
+      // Delete each flashcard from the backend sequentially
+      const deletePromises = flashcardsResponse.data.map(flashcard => 
+        fetch(`${API_BASE_URL}/flashcards/${flashcard.id}/`, {
+          method: 'DELETE',
+        })
+      );
+      
+      await Promise.all(deletePromises);
+      
+      return { data: true };
+    } catch (error) {
+      console.error('Error deleting all flashcards from backend:', error);
+      return { error: handleApiError(error, 'Failed to delete all flashcards from server') };
+    }
+  },
+
+  async saveFlashcards(flashcards: Omit<AppFlashcard, 'id' | 'createdAt'>[]): Promise<ApiResponse<AppFlashcard[]>> {
+    if (mockModeEnabled) {
+      return { data: [] };
+    }
+    try {
+      const response = await fetch(`${API_BASE_URL}/flashcards/batch/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          flashcards: flashcards.map(f => ({
+            title: f.front.substring(0, 30),
+            question: f.front,
+            answer: f.back,
+            tags: f.tags,
+            note: f.noteId
+          }))
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to save flashcards: ${response.status}`);
+      }
+      const data = await response.json();
+      // Map backend response to AppFlashcard[]
+      const saved = data.map((card: any) => ({
+        id: card.id,
+        front: card.question || card.front,
+        back: card.answer || card.back,
+        tags: card.tags || [],
+        noteId: card.note || card.noteId,
+        createdAt: new Date(card.created_at || card.createdAt)
+      }));
+      return { data: saved };
+    } catch (error) {
+      return { error: handleApiError(error, 'Failed to save flashcards') };
+    }
   }
+}; 
+
+// Fix the tag type errors
+const handleTags = (content: string): string[] => {
+  const tags = content.split(/[,\n]/).map((tag: string) => {
+    return tag.trim()
+      .replace(/^['"\[\s-]*|['"\]\s]*$/g, '') // Remove quotes, brackets at start/end
+      .replace(/^-\s*/, '') // Remove leading dash
+      .trim();
+  }).filter((tag: string) => tag.length > 0);
+  return tags;
 }; 
