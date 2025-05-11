@@ -51,7 +51,7 @@ import {
   Close as CloseIcon
 } from '@mui/icons-material';
 import { useApp } from '../context/AppContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api, AIModel, Flashcard as ApiFlashcard } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 import { createWorker } from 'tesseract.js';
@@ -74,6 +74,7 @@ type ViewMode = 'all' | 'byNote' | 'focused';
 const Flashcards: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' | 'info' | 'warning', showViewButton: false });
@@ -107,6 +108,24 @@ const Flashcards: React.FC = () => {
   // Get flashcards from context
   const { state, dispatch } = useApp();
   const { flashcards } = state;
+
+  // Add an effect to handle navigation and cleanup
+  useEffect(() => {
+    // This effect runs when the component mounts
+    const handleBeforeUnload = () => {
+      // Reset any necessary state before unmounting
+      setIsGenerating(false);
+      setIsGeneratingFromNote(false);
+    };
+
+    // Add cleanup handler
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    // Cleanup function
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   // Filter flashcards based on search query and active note
   const filteredFlashcards = useMemo(() => {
@@ -342,15 +361,8 @@ const Flashcards: React.FC = () => {
     });
     setNoteToFlashcardsDialogOpen(false);
     
-    // If we have created flashcards, switch to study mode to view them
-    if (flashcardsToSave.length > 0) {
-      setActiveNoteId(selectedNote.id);
-      setViewMode('byNote');
-      setActiveTab('study');
-      setCurrentIndex(0);
-      setIsFlipped(false);
-      setFocusedStudyMode(true);
-    }
+    // Force redirect to dashboard at root path
+    window.location.href = '/';
   };
 
   // Handle closing focused study mode
@@ -402,6 +414,11 @@ const Flashcards: React.FC = () => {
     });
     setCurrentNewTag('');
     setOpenCreateForm(false);
+    
+    // Ensure we properly reset state
+    setActiveTab('history');
+    setViewMode('all');
+    setCurrentIndex(0);
   };
   
   // Function to create a new flashcard
@@ -427,6 +444,9 @@ const Flashcards: React.FC = () => {
     
     // Reset form
     resetCreationForm();
+    
+    // Force redirect to dashboard at root path
+    window.location.href = '/';
   };
 
   // Export selected flashcards to Anki format
@@ -582,68 +602,100 @@ const Flashcards: React.FC = () => {
             Flashcards by Note
           </Typography>
           
-          <Grid container spacing={2}>
-            {notesWithFlashcards.map(noteId => {
-              const noteCards = flashcardsByNote.get(noteId) || [];
-              const noteInfo = state.notes.find(n => n.id === noteId);
-              
-              if (!noteInfo) return null;
-              
-              return (
-                <Grid item xs={12} sm={6} md={4} key={noteId}>
-                  <Card 
-                    sx={{ 
-                      height: '100%',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s',
-                      '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: 3
-                      }
-                    }}
-                    onClick={() => viewExistingFlashcards(noteId)}
-                  >
-                    <CardContent sx={{ flexGrow: 1 }}>
-                      <Typography 
-                        variant="h6" 
-                        gutterBottom
-                        sx={{
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          display: '-webkit-box',
-                          WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        }}
-                      >
-                        {noteInfo.title}
-                      </Typography>
+          <Box 
+            sx={{ 
+              maxHeight: '500px', // Set a max height that would fit 6 cards (2 rows of 3) before scrolling
+              overflowY: 'auto',
+              pr: 1, // Add padding for scrollbar
+              // Custom scrollbar styling
+              '&::-webkit-scrollbar': {
+                width: '8px',
+                backgroundColor: 'transparent',
+              },
+              '&::-webkit-scrollbar-track': {
+                background: alpha(theme.palette.primary.main, 0.05),
+                borderRadius: '10px',
+                margin: '4px 0',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                background: alpha(theme.palette.primary.main, 0.2),
+                borderRadius: '10px',
+                border: `2px solid transparent`,
+                backgroundClip: 'padding-box',
+                '&:hover': {
+                  background: alpha(theme.palette.primary.main, 0.3),
+                  border: `2px solid transparent`,
+                  backgroundClip: 'padding-box',
+                },
+              },
+              // Firefox scrollbar
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${alpha(theme.palette.primary.main, 0.2)} ${alpha(theme.palette.primary.main, 0.05)}`,
+            }}
+          >
+            <Grid container spacing={2}>
+              {notesWithFlashcards.map(noteId => {
+                const noteCards = flashcardsByNote.get(noteId) || [];
+                const noteInfo = state.notes.find(n => n.id === noteId);
+                
+                if (!noteInfo) return null;
+                
+                return (
+                  <Grid item xs={12} sm={6} md={4} key={noteId}>
+                    <Card 
+                      sx={{ 
+                        height: '180px', // Fixed height for all cards
+                        display: 'flex',
+                        flexDirection: 'column',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 3
+                        }
+                      }}
+                      onClick={() => viewExistingFlashcards(noteId)}
+                    >
+                      <CardContent sx={{ flexGrow: 1 }}>
+                        <Typography 
+                          variant="h6" 
+                          gutterBottom
+                          sx={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                          }}
+                        >
+                          {noteInfo.title}
+                        </Typography>
+                        
+                        <Divider sx={{ mt: 1, mb: 2 }} />
+                        
+                        <Typography variant="body2" color="text.secondary">
+                          {noteCards.length} flashcard{noteCards.length !== 1 ? 's' : ''}
+                        </Typography>
+                      </CardContent>
                       
-                      <Divider sx={{ mt: 1, mb: 2 }} />
-                      
-                      <Typography variant="body2" color="text.secondary">
-                        {noteCards.length} flashcard{noteCards.length !== 1 ? 's' : ''}
-                      </Typography>
-                    </CardContent>
-                    
-                    <Box sx={{ p: 2, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
-                      <Button
-                        variant="outlined"
-                        size="small"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          viewExistingFlashcards(noteId);
-                        }}
-                      >
-                        Study
-                      </Button>
-                    </Box>
-                  </Card>
-                </Grid>
-              );
-            })}
-          </Grid>
+                      <Box sx={{ p: 2, pt: 0, display: 'flex', justifyContent: 'flex-end' }}>
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            viewExistingFlashcards(noteId);
+                          }}
+                        >
+                          Study
+                        </Button>
+                      </Box>
+                    </Card>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          </Box>
         </Box>
       )}
 
@@ -1136,7 +1188,13 @@ const Flashcards: React.FC = () => {
       {/* Enhanced Note Selection Dialog */}
       <Dialog
         open={aiDialogOpen}
-        onClose={() => !isGeneratingFromNote && setAiDialogOpen(false)}
+        onClose={() => {
+          if (!isGeneratingFromNote) {
+            setAiDialogOpen(false);
+            setActiveTab('study');
+            setViewMode('all');
+          }
+        }}
         fullWidth
         maxWidth="md"
         sx={{
@@ -1265,7 +1323,11 @@ const Flashcards: React.FC = () => {
         </DialogContent>
         <DialogActions>
           <Button 
-            onClick={() => setAiDialogOpen(false)} 
+            onClick={() => {
+              setAiDialogOpen(false);
+              // Force redirect to dashboard
+              window.location.href = '/';
+            }}
             color="inherit"
             disabled={isGeneratingFromNote}
           >
@@ -1277,7 +1339,15 @@ const Flashcards: React.FC = () => {
       {/* Note to Flashcards Dialog */}
       <Dialog
         open={noteToFlashcardsDialogOpen}
-        onClose={() => !isGeneratingFromNote && setNoteToFlashcardsDialogOpen(false)}
+        onClose={() => {
+          if (!isGeneratingFromNote) {
+            setNoteToFlashcardsDialogOpen(false);
+            setSelectedNote(null);
+            setGeneratedFlashcards([]);
+            // Force redirect to dashboard
+            window.location.href = '/';
+          }
+        }}
         fullWidth
         maxWidth="md"
       >
@@ -1334,6 +1404,8 @@ const Flashcards: React.FC = () => {
               setNoteToFlashcardsDialogOpen(false);
               setSelectedNote(null);
               setGeneratedFlashcards([]);
+              // Force redirect to dashboard
+              window.location.href = '/';
             }} 
             color="inherit"
             disabled={isGeneratingFromNote}

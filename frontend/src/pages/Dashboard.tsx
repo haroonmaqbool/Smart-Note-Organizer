@@ -395,27 +395,16 @@ const Dashboard: React.FC = () => {
                   scrollbarColor: `${alpha(theme.palette.primary.main, 0.2)} ${alpha(theme.palette.primary.main, 0.05)}`,
                 }}
               >
-                {/* For each row of three notes */}
-                {Array.from({ length: Math.ceil(notes.length / 3) }).map((_, rowIndex) => (
-                  <Box 
-                    key={`row-${rowIndex}`} 
-                    sx={{ 
-                      display: 'flex',
-                      flexDirection: 'row',
-                      gap: 2,
-                      mb: 2,
-                      width: '100%'
-                    }}
-                  >
-                    {notes.slice(rowIndex * 3, rowIndex * 3 + 3).map((note) => (
+                <Grid container spacing={2}>
+                  {notes.map((note) => (
+                    <Grid item xs={12} sm={6} md={4} key={note.id}>
                       <Card 
-                        key={note.id}
                         sx={{ 
                           borderRadius: 2,
                           transition: 'all 0.3s ease',
-                          width: 'calc(33.33% - 11px)', // Account for gap
                           display: 'flex',
                           flexDirection: 'column',
+                          height: '220px', // Fixed height for all cards
                           '&:hover': {
                             boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
                             transform: 'translateY(-3px)',
@@ -532,9 +521,9 @@ const Dashboard: React.FC = () => {
                           </Typography>
                         </CardContent>
                       </Card>
-                    ))}
-                  </Box>
-                ))}
+                    </Grid>
+                  ))}
+                </Grid>
               </Box>
             )}
           </Paper>

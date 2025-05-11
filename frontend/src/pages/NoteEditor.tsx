@@ -94,7 +94,7 @@ const NoteEditor: React.FC = () => {
       // For success messages, always redirect to dashboard
       if (severity === 'success') {
         setTimeout(() => {
-          navigate('/dashboard');
+          navigate('/');
         }, 1500);
       }
     }
@@ -137,7 +137,7 @@ const NoteEditor: React.FC = () => {
   useEffect(() => {
     if (redirectAfterSave && !isLoading) {
       const timer = setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = '/';
       }, 1500);
       
       return () => clearTimeout(timer);
@@ -341,7 +341,7 @@ const NoteEditor: React.FC = () => {
     
     // Direct navigation after a short delay to show the message
     setTimeout(() => {
-      window.location.href = '/dashboard';
+      window.location.href = '/';
     }, 1500);
   };
 
@@ -451,7 +451,7 @@ const NoteEditor: React.FC = () => {
       
       // Direct navigation after a short delay to show the message
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = '/';
       }, 1500);
     } catch (error) {
       console.error('Error saving note:', error);
@@ -465,7 +465,7 @@ const NoteEditor: React.FC = () => {
     if (noteId) {
       // If editing an existing note, navigate back
       showSnackbarMessage('Edit cancelled', 'info');
-      window.location.href = '/dashboard';
+      window.location.href = '/';
     } else {
       // If creating a new note, clear the form
       setTitle('');
@@ -476,13 +476,13 @@ const NoteEditor: React.FC = () => {
       showSnackbarMessage('Note discarded', 'info');
       // Direct navigation after a short delay
       setTimeout(() => {
-        window.location.href = '/dashboard';
+        window.location.href = '/';
       }, 1500);
     }
   };
 
   const navigateBack = () => {
-    window.location.href = '/dashboard';
+    window.location.href = '/';
   };
 
   const handleContentChange = (html: string) => {
