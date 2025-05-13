@@ -91,8 +91,8 @@ npm run dev
 
 ### Accessing the Application
 
-- Frontend: http://localhost:5174
-- Backend API: http://localhost:5000
+- Frontend: [http://localhost:5174](https://notenestfront.netlify.app/)
+- Backend API: [http://localhost:5000](https://smartnote-back.onrender.com/api/)
 
 ## Architecture
 
